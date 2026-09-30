@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>달리기 · 러닝 타이머</title>
+<style>
+  :root{
+    --ink:#0b1526;
+    --ink-soft:#5b6b86;
+    --line:rgba(11,21,38,.10);
+    --card:rgba(255,255,255,.58);
+    --accent:#1f6feb;
+    --accent-2:#ff7a45;
+    --ok:#12a150;
+    --shadow:0 24px 60px -20px rgba(11,21,38,.45);
+    --font:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--font);
+    color:var(--ink);
+    background:#eef2f7;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- NAV ---------- */
+  .nav{
+    position:absolute; inset:0 0 auto 0; z-index:6;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px clamp(18px,4vw,54px);
+    color:#fff; mix-blend-mode:normal;
+    opacity:0; transform:translateY(-12px); pointer-events:none;
+  }
+  body.is-revealed .nav{
+    opacity:1; transform:none; pointer-events:auto;
+    transition:opacity 1.4s cubic-bezier(.22,1,.36,1) .6s, transform 1.4s cubic-bezier(.22,1,.36,1) .6s;
+  }
+  .brand{
+    display:flex; align-items:center; gap:10px;
+    font-weight:800; letter-spacing:-.02em; font-size:17px;
+    text-shadow:0 2px 12px rgba(0,0,0,.35);
+  }
+  .brand i{
+    width:26px; height:26px; border-radius:9px; display:grid; place-items:center;
+    background:linear-gradient(140deg,var(--accent),#5aa9ff);
+    box-shadow:0 6px 16px rgba(31,111,235,.45);
+    font-style:normal; font-size:14px;
+  }
+  .nav ul{display:flex; gap:clamp(14px,2.4vw,30px); margin:0; padding:0; list-style:none}
+  .nav a{
+    color:rgba(255,255,255,.86); text-decoration:none; font-size:14px; font-weight:600;
+    text-shadow:0 2px 10px rgba(0,0,0,.35);
+  }
+  .nav a:hover{color:#fff}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative;
+    min-height:100vh;
+    min-height:100svh;
+    display:flex; align-items:center;
+    overflow:hidden;
+    isolation:isolate;
+    background:#0b1526;
+  }
+
+  /* layer 1: still image (revealed after the video ends) */
+  .hero__still{
+    position:absolute; inset:0; z-index:0;
+    background-image:url("hero%20page.jpg");
+    background-size:cover; background-position:60% 50%;
+    transform:scale(1.02);
+  }
+  /* layer 2: the one-and-only video */
+  .hero__video{
+    position:absolute; inset:0; z-index:1;
+    width:100%; height:100%; object-fit:cover; object-position:60% 50%;
+    opacity:0;
+    transition:opacity 1.8s cubic-bezier(.37,0,.18,1), transform 9s linear;
+    will-change:opacity,transform;
+  }
+  .hero.is-playing .hero__video{opacity:1; transform:scale(1.045)}
+  .hero.is-revealed .hero__video{opacity:0; transform:scale(1.01)}
+
+  /* legibility scrims */
+  .hero__scrim{
+    position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:
+      linear-gradient(90deg, rgba(6,14,28,.50) 0%, rgba(6,14,28,.24) 30%, rgba(6,14,28,0) 52%),
+      linear-gradient(0deg, rgba(6,14,28,.48) 0%, rgba(6,14,28,0) 40%),
+      linear-gradient(180deg, rgba(6,14,28,.40) 0%, rgba(6,14,28,0) 24%);
+    opacity:0; transition:opacity 2s cubic-bezier(.37,0,.18,1) .1s;
+  }
+  body.is-revealed .hero__scrim{opacity:1}
+
+  /* ---------- COPY ---------- */
+  .hero__inner{
+    position:relative; z-index:4;
+    width:100%;
+    padding:120px clamp(18px,4vw,54px) 96px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:clamp(24px,4vw,60px);
+  }
+  .copy{max-width:min(560px,46vw)}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 14px 7px 10px; border-radius:999px;
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    color:#fff; font-size:12.5px; font-weight:700; letter-spacing:.01em;
+  }
+  .eyebrow s{width:7px; height:7px; border-radius:50%; background:#5ee08a; box-shadow:0 0 0 4px rgba(94,224,138,.22)}
+  h1{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(36px,5vw,64px); line-height:1.06; letter-spacing:-.035em; font-weight:800;
+    text-shadow:0 6px 34px rgba(4,10,20,.5);
+  }
+  h1 em{font-style:normal; color:#ffd7c2}
+  .ask{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(17px,1.7vw,23px); font-weight:700; letter-spacing:-.02em;
+    text-shadow:0 2px 18px rgba(4,10,20,.55);
+  }
+  .lede{
+    margin:12px 0 0; color:rgba(255,255,255,.9);
+    font-size:clamp(14.5px,1.2vw,17px); line-height:1.7; font-weight:500;
+    text-shadow:0 2px 18px rgba(4,10,20,.5);
+    max-width:36em;
+  }
+  .lede b{color:#fff; font-weight:800; font-family:var(--mono); font-size:1.06em; letter-spacing:-.02em}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:26px}
+  .chips span{
+    padding:7px 13px; border-radius:999px; font-size:12.5px; font-weight:700;
+    background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.22);
+    color:rgba(255,255,255,.94); backdrop-filter:blur(8px);
+  }
+  .chips b{color:#ffd7c2; font-family:var(--mono); font-weight:800}
+  .copy,.chips{opacity:0; transform:translateY(16px); filter:blur(8px); pointer-events:none}
+  body.is-revealed .copy,
+  body.is-revealed .chips{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.5s cubic-bezier(.22,1,.36,1) .5s,
+               transform 1.5s cubic-bezier(.22,1,.36,1) .5s,
+               filter 1.5s cubic-bezier(.22,1,.36,1) .5s;
+  }
+  body.is-revealed .chips{transition-delay:.72s}
+
+  /* ---------- TIMER SLOT: right / vertical center ---------- */
+  .slot{
+    justify-self:end; align-self:center;
+    width:min(368px,92vw);
+  }
+  .stopwatch{
+    position:relative;
+    padding:32px 32px 26px;
+    border-radius:32px;
+    background:var(--card);
+    border:1px solid rgba(255,255,255,.55);
+    box-shadow:0 32px 70px -22px rgba(11,21,38,.5), inset 0 1px 0 rgba(255,255,255,.75);
+    backdrop-filter:blur(30px) saturate(1.7);
+    -webkit-backdrop-filter:blur(30px) saturate(1.7);
+    opacity:0; transform:translateY(20px) scale(.96); filter:blur(12px);
+    pointer-events:none;
+  }
+  body.is-revealed .stopwatch{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.5s cubic-bezier(.22,1,.36,1) .25s,
+               transform 1.6s cubic-bezier(.16,1,.3,1) .25s,
+               filter 1.5s cubic-bezier(.22,1,.36,1) .25s;
+  }
+  /* running glow ring */
+  .stopwatch::before{
+    content:""; position:absolute; inset:-2px; border-radius:34px; z-index:-1;
+    background:linear-gradient(140deg,rgba(31,111,235,.5),rgba(255,122,69,.42));
+    opacity:0; transition:opacity .6s ease; filter:blur(16px);
+  }
+  .stopwatch.is-running::before{opacity:1; animation:breathe 2.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.55}50%{opacity:1}}
+
+  .sw-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px}
+  .sw-label{display:flex; align-items:center; gap:10px; font-size:12.5px; font-weight:800; letter-spacing:.15em; color:var(--ink-soft); text-transform:uppercase}
+  .sw-dot{width:10px; height:10px; border-radius:50%; background:#b9c4d4; transition:background .3s}
+  .is-running .sw-dot{background:var(--ok); box-shadow:0 0 0 0 rgba(18,161,80,.5); animation:pulse 1.6s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(18,161,80,0)}100%{box-shadow:0 0 0 0 rgba(18,161,80,0)}}
+  .sw-state{
+    font-size:12.5px; font-weight:800; padding:6px 12px; border-radius:999px;
+    background:rgba(11,21,38,.06); color:var(--ink-soft);
+  }
+  .is-running .sw-state{background:rgba(18,161,80,.14); color:#0b7a3d}
+
+  .digits{
+    display:flex; align-items:baseline;
+    font-family:var(--font);
+    font-weight:800;
+    font-size:clamp(52px,5.4vw,70px); line-height:1; letter-spacing:-.05em;
+    color:var(--ink);
+    font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+  }
+  .digits .sep{opacity:.3; padding:0 3px; font-weight:600}
+  .digits .cs{color:var(--accent-2); font-weight:800; font-size:.7em; letter-spacing:-.04em}
+
+  .track{height:5px; border-radius:99px; background:rgba(11,21,38,.10); margin:22px 0 5px; overflow:hidden}
+  .track i{display:block; height:100%; width:0%; border-radius:99px; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .12s linear}
+  .hint{font-size:12.5px; font-weight:600; color:var(--ink-soft); margin:0 0 20px; display:flex; justify-content:space-between; gap:10px}
+
+  .sw-btns{display:grid; grid-template-columns:1.55fr 1fr 1fr; gap:10px}
+  button{
+    font-family:inherit; font-size:15.5px; font-weight:800; letter-spacing:-.01em;
+    border:0; border-radius:17px; padding:17px 10px; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button:active{transform:translateY(1px) scale(.985)}
+  button:focus-visible{outline:3px solid rgba(31,111,235,.45); outline-offset:2px}
+  .btn-main{color:#fff; background:linear-gradient(140deg,#1f6feb,#3f8dff); box-shadow:0 12px 24px -10px rgba(31,111,235,.85)}
+  .stopwatch.is-running .btn-main{background:linear-gradient(140deg,#e8590c,#ff8a3d); box-shadow:0 12px 24px -10px rgba(232,89,12,.8)}
+  .btn-ghost{color:var(--ink); background:rgba(11,21,38,.06)}
+  .btn-ghost:hover{background:rgba(11,21,38,.1)}
+
+  .laps{margin:18px 0 0; padding:0; list-style:none; max-height:112px; overflow:auto; display:grid; gap:7px}
+  .laps li{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    font-family:var(--mono); font-size:13.5px; font-weight:600; color:var(--ink);
+    background:rgba(11,21,38,.05); border-radius:12px; padding:9px 13px;
+  }
+  .laps li span{color:var(--ink-soft); font-size:11.5px; font-family:var(--font); font-weight:700}
+  .laps:empty{display:none}
+
+  /* replay the hero clip */
+  .replay{
+    position:absolute; z-index:5; right:clamp(18px,4vw,54px); bottom:clamp(18px,4vw,44px);
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 15px; border-radius:999px; cursor:pointer;
+    background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.3);
+    color:#fff; font-family:inherit; font-size:12.5px; font-weight:700;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    opacity:0; transform:translateY(10px); pointer-events:none;
+    transition:opacity .6s ease, transform .6s ease, background .2s ease;
+  }
+  .replay:hover{background:rgba(255,255,255,.26)}
+  body.is-revealed .replay{opacity:1; transform:none; pointer-events:auto; transition-delay:.9s}
+  .replay svg{width:14px; height:14px}
+
+  /* ---------- NEXT SECTION ---------- */
+  .stats{
+    position:relative; z-index:2;
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+    background:var(--line);
+    border-top:1px solid var(--line);
+    opacity:0; transform:translateY(16px); pointer-events:none;
+  }
+  body.is-revealed .stats{
+    opacity:1; transform:none; pointer-events:auto;
+    transition:opacity 1.3s cubic-bezier(.22,1,.36,1) .85s, transform 1.3s cubic-bezier(.22,1,.36,1) .85s;
+  }
+  .stat{background:#fff; padding:26px clamp(16px,3vw,34px)}
+  .stat b{display:block; font-size:12px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft); text-transform:uppercase}
+  .stat strong{display:block; margin-top:8px; font-family:var(--mono); font-size:clamp(20px,2.4vw,30px); font-weight:700; letter-spacing:-.02em}
+  .stat em{font-style:normal; font-size:13px; font-weight:700; color:var(--ink-soft); margin-left:4px}
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:1000px){
+    .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
+    .copy{max-width:none}
+    .slot{justify-self:center; width:min(420px,100%)}
+  }
+  @media (max-width:640px){
+    .nav ul{display:none}
+    .hero{min-height:auto; padding:0}
+    .hero__inner{padding:104px 18px 86px}
+    .slot{justify-self:stretch; width:100%}
+    .stats{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important; transition-duration:.01ms !important}
+  }
+</style>
+<noscript><style>
+  .nav,.copy,.chips,.stats,.stopwatch,.hero__scrim{
+    opacity:1 !important; transform:none !important; filter:none !important; pointer-events:auto !important;
+  }
+</style></noscript>
+</head>
+<body>
+
+<header class="hero" id="hero">
+  <nav class="nav">
+    <div class="brand"><i>▶</i>달리기</div>
+    <ul>
+      <li><a href="#hero">홈</a></li>
+      <li><a href="#stats">기록</a></li>
+      <li><a href="#hero">코치</a></li>
+    </ul>
+  </nav>
+
+  <!-- layer 1: still hero image (becomes the timer's backdrop) -->
+  <div class="hero__still" role="img" aria-label="가을 햇살이 비치는 보도 위를 걸어가는 학생"></div>
+  <!-- layer 2: video, plays exactly once -->
+  <video class="hero__video" id="clip"
+         src="hero%20page.mp4"
+         poster="hero%20page.jpg"
+         preload="auto" muted playsinline disablepictureinpicture></video>
+  <div class="hero__scrim"></div>
+
+  <div class="hero__inner">
+    <div class="copy">
+      <span class="eyebrow"><s></s>오늘의 체육수업 · 목표 시간 안에 달리기</span>
+      <h1>301번 버스,<br><em>곧 출발!</em></h1>
+      <p class="ask">시간 안에 도착할 수 있을까?</p>
+      <p class="lede">정류장까지 <b data-d>120</b>m, 버스 출발까지 <b data-t>30</b>초.<br>출발 신호에 맞춰 달려 목표 시간 안에 결승선을 통과해 보세요.</p>
+      <div class="chips">
+        <span><b data-d>120</b>m 달리기</span>
+        <span>목표 <b data-t>30</b>초 이내</span>
+        <span>나의 기록 확인</span>
+      </div>
+    </div>
+
+    <!-- right / vertical center -->
+    <div class="slot">
+      <div class="stopwatch" id="sw" role="group" aria-label="러닝 타이머">
+        <div class="sw-head">
+          <div class="sw-label"><span class="sw-dot"></span>스탑워치</div>
+          <div class="sw-state" id="state">대기</div>
+        </div>
+
+        <div class="digits" id="digits" role="timer" aria-live="off">
+          <span id="mm">00</span><span class="sep">:</span><span id="ss">00</span><span class="cs" id="cs">.00</span>
+        </div>
+
+        <div class="track"><i id="bar"></i></div>
+        <p class="hint"><span>경과 시간</span><span id="total">0.00 초</span></p>
+
+        <div class="sw-btns">
+          <button class="btn-main" id="toggle" type="button">
+            <svg id="icoPlay" width="13" height="13" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2 1l8 5-8 5z"/></svg>
+            <span id="toggleText">시작</span>
+          </button>
+          <button class="btn-ghost" id="lap" type="button">랩</button>
+          <button class="btn-ghost" id="reset" type="button">리셋</button>
+        </div>
+
+        <ul class="laps" id="laps"></ul>
+      </div>
+    </div>
+  </div>
+
+  <button class="replay" id="replay" type="button" aria-label="히어로 영상 다시 재생">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    영상 다시 보기
+  </button>
+</header>
+
+<section class="stats" id="stats">
+  <div class="stat"><b>상태</b><strong id="sState">대기</strong></div>
+  <div class="stat"><b>경과</b><strong id="sTime">00:00.00</strong></div>
+  <div class="stat"><b>랩</b><strong id="sLaps">0<em>회</em></strong></div>
+</section>
+
+<script>
+(() => {
+  const hero   = document.getElementById('hero');
+  const clip   = document.getElementById('clip');
+  const sw     = document.getElementById('sw');
+  const mmEl   = document.getElementById('mm');
+  const ssEl   = document.getElementById('ss');
+  const csEl   = document.getElementById('cs');
+  const bar    = document.getElementById('bar');
+  const total  = document.getElementById('total');
+  const stateEl= document.getElementById('state');
+  const toggle = document.getElementById('toggle');
+  const toggleText = document.getElementById('toggleText');
+  const icoPlay = document.getElementById('icoPlay');
+  const lapBtn = document.getElementById('lap');
+  const resetBtn = document.getElementById('reset');
+  const lapsEl = document.getElementById('laps');
+  const replay = document.getElementById('replay');
+  const sState = document.getElementById('sState');
+  const sTime  = document.getElementById('sTime');
+  const sLaps  = document.getElementById('sLaps');
+
+  /* ================= VIDEO : play once, then reveal ================= */
+  const ICON_PLAY  = '<path d="M2 1l8 5-8 5z"/>';
+  const ICON_PAUSE = '<path d="M2 1h3v10H2zM7 1h3v10H7z"/>';
+  let revealed = false;
+
+  function reveal(){
+    if (revealed) return;
+    revealed = true;
+    hero.classList.remove('is-playing');
+    hero.classList.add('is-revealed');
+    document.body.classList.add('is-revealed');   // every word appears with the timer
+  }
+
+  function startClip(){
+    revealed = false;
+    if (running) stop();                       // don't hide a live stopwatch behind the clip
+    document.body.classList.remove('is-revealed');
+    hero.classList.remove('is-revealed');
+    hero.classList.add('is-playing');
+    clip.currentTime = 0;
+    const p = clip.play();
+    if (p && p.catch) p.catch(() => setTimeout(reveal, 900));
+  }
+
+  clip.addEventListener('ended', reveal);
+  clip.addEventListener('error', reveal);
+  // safety net: never let the timer stay hidden
+  setTimeout(reveal, 12000);
+
+  function begin(){
+    if (reduced()) { reveal(); return; }          // motion-sensitive: skip the clip
+    const started = clip.play();
+    if (started && started.catch) started.catch(reveal);
+  }
+
+  function reduced(){ return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  clip.muted = true;            // autoplay-safe
+  begin();
+  replay.addEventListener('click', startClip);
+
+  /* ================= STOPWATCH ================= */
+  const RING_MS = 60 * 60 * 1000;         // progress ring = 1 hour
+  let running = false, base = 0, mark = 0, raf = 0, laps = [];
+
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const fmt = ms => {
+    const t   = Math.max(0, ms);
+    const m   = Math.floor(t / 60000);
+    const s   = Math.floor(t / 1000) % 60;
+    const cs  = Math.floor(t / 10) % 100;
+    return { m: pad(m), s: pad(s), cs: pad(cs), full: `${pad(m)}:${pad(s)}.${pad(cs)}` };
+  };
+
+  const elapsed = () => base + (running ? performance.now() - mark : 0);
+
+  function paint(){
+    const ms = elapsed();
+    const t  = fmt(ms);
+    mmEl.textContent = t.m;
+    ssEl.textContent = t.s;
+    csEl.textContent = '.' + t.cs;
+    total.textContent = (ms / 1000).toFixed(2) + ' 초';
+    sTime.textContent = t.full;
+    bar.style.width = Math.min(100, (ms / RING_MS) * 100) + '%';
+    if (running) raf = requestAnimationFrame(paint);
+  }
+
+  function sync(){
+    sw.classList.toggle('is-running', running);
+    const label = running ? '정지' : (elapsed() > 0 ? '이어서' : '시작');
+    toggleText.textContent = label;
+    icoPlay.innerHTML = running ? ICON_PAUSE : ICON_PLAY;
+    stateEl.textContent = running ? '러닝 중' : (elapsed() > 0 ? '일시정지' : '대기');
+    sState.textContent = stateEl.textContent;
+  }
+
+  function start(){
+    if (running) return;
+    mark = performance.now();
+    running = true;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(paint);
+    sync();
+  }
+
+  function stop(){
+    if (!running) return;
+    base = elapsed();
+    running = false;
+    cancelAnimationFrame(raf);
+    paint();
+    sync();
+  }
+
+  toggle.addEventListener('click', () => running ? stop() : start());
+
+  lapBtn.addEventListener('click', () => {
+    const now = elapsed();
+    if (now < 100) return;                      // ignore accidental early taps
+    const prev = laps.length ? laps[laps.length - 1].total : 0;
+    laps.push({ split: now - prev, total: now });
+    lapsEl.innerHTML = '';
+    laps.slice().reverse().forEach((l, i) => {
+      const n = laps.length - i;
+      const li = document.createElement('li');
+      li.innerHTML = `<span>랩 ${n} · ${(l.split / 1000).toFixed(2)}초</span>${fmt(l.total).full}`;
+      lapsEl.prepend(li);
+    });
+    while (lapsEl.children.length > 5) lapsEl.lastElementChild.remove();
+    sLaps.innerHTML = laps.length + '<em>회</em>';
+  });
+
+  resetBtn.addEventListener('click', () => {
+    running = false;
+    cancelAnimationFrame(raf);
+    base = 0; laps = [];
+    lapsEl.innerHTML = '';
+    sLaps.innerHTML = '0<em>회</em>';
+    paint();
+    sync();
+  });
+
+  // Space toggles when the stopwatch has focus
+  sw.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target === sw) { e.preventDefault(); running ? stop() : start(); }
+  });
+
+  paint();
+  sync();
+})();
+</script>
+</body>
+</html>

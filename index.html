@@ -80,11 +80,14 @@
     position:absolute; inset:0; z-index:1;
     width:100%; height:100%; object-fit:cover; object-position:60% 50%;
     opacity:0;
-    transition:opacity 1.8s cubic-bezier(.37,0,.18,1), transform 9s linear;
     will-change:opacity,transform;
   }
-  .hero.is-playing .hero__video{opacity:1; transform:scale(1.045)}
-  .hero.is-revealed .hero__video{opacity:0; transform:scale(1.01)}
+  .hero__video--main{transition:opacity 1.8s cubic-bezier(.37,0,.18,1), transform 9s linear}
+  .hero.is-playing  .hero__video--main{opacity:1; transform:scale(1.045)}
+  .hero.is-revealed .hero__video--main{opacity:0; transform:scale(1.01)}
+
+  .hero__video--fail{z-index:1; transform:scale(1.03); transition:opacity 1.1s cubic-bezier(.37,0,.18,1)}
+  body.is-failed .hero__video--fail{opacity:1; transform:scale(1)}
 
   /* legibility scrims */
   .hero__scrim{
@@ -107,7 +110,7 @@
     align-items:center;
     gap:clamp(24px,4vw,60px);
   }
-  .copy{max-width:min(560px,46vw)}
+  .copy{max-width:none}
   .eyebrow{
     display:inline-flex; align-items:center; gap:8px;
     padding:7px 14px 7px 10px; border-radius:999px;
@@ -141,6 +144,65 @@
     color:rgba(255,255,255,.94); backdrop-filter:blur(8px);
   }
   .chips b{color:#ffd7c2; font-family:var(--mono); font-weight:800}
+
+  /* ---------- FAIL STATE ---------- */
+  .stack{
+    position:relative;
+    display:grid;                       /* copy and fail message share one cell */
+    max-width:min(560px,46vw);
+  }
+  .copy,.fail{grid-area:1 / 1}
+  .fail{
+    opacity:0; transform:translateY(20px) scale(.98); filter:blur(10px);
+    pointer-events:none;
+  }
+  body.is-failed .fail{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.2s cubic-bezier(.22,1,.36,1) .35s,
+               transform 1.3s cubic-bezier(.16,1,.3,1) .35s,
+               filter 1.2s cubic-bezier(.22,1,.36,1) .35s;
+  }
+  .fail__tag{
+    display:inline-block; padding:7px 15px; border-radius:999px;
+    background:#dc2626; color:#fff;
+    font-size:12.5px; font-weight:800; letter-spacing:.07em;
+    box-shadow:0 10px 26px -10px rgba(220,38,38,.95);
+  }
+  .fail__title{
+    margin:18px 0 0; color:#fff;
+    font-size:clamp(54px,7.6vw,100px); line-height:.94; letter-spacing:-.05em; font-weight:800;
+    text-shadow:0 8px 40px rgba(4,10,20,.6);
+  }
+  .fail__msg{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(17px,1.75vw,23px); font-weight:700; letter-spacing:-.02em; line-height:1.45;
+    text-shadow:0 2px 20px rgba(4,10,20,.6);
+  }
+  .fail__msg b{color:#ffb4a2; font-family:var(--mono); font-weight:800; font-size:1.08em}
+  .fail__sub{
+    margin:12px 0 0; color:rgba(255,255,255,.86);
+    font-size:clamp(14px,1.15vw,16.5px); line-height:1.7; font-weight:500;
+    text-shadow:0 2px 18px rgba(4,10,20,.55); max-width:36em;
+  }
+  .fail__btn{
+    margin-top:28px; padding:17px 30px; border-radius:18px; font-size:16px;
+    color:#fff; background:linear-gradient(140deg,#dc2626,#f97316);
+    box-shadow:0 18px 34px -14px rgba(220,38,38,.95);
+  }
+  .fail__btn:hover{filter:brightness(1.07)}
+  body.is-failed .copy{opacity:0; transform:translateY(-16px); filter:blur(6px)}
+  body.is-failed .hero__scrim{
+    background:
+      linear-gradient(90deg, rgba(32,6,10,.62) 0%, rgba(32,6,10,.30) 32%, rgba(32,6,10,0) 54%),
+      linear-gradient(0deg, rgba(32,6,10,.5) 0%, rgba(32,6,10,0) 40%),
+      linear-gradient(180deg, rgba(32,6,10,.44) 0%, rgba(32,6,10,0) 24%);
+  }
+  .stopwatch.is-failed .sw-dot{background:#dc2626}
+  .stopwatch.is-failed .sw-state{background:rgba(220,38,38,.13); color:#b91c1c}
+  .stopwatch.is-failed::before{opacity:1; animation:none; filter:blur(22px); background:linear-gradient(140deg,rgba(220,38,38,.32),rgba(249,115,22,.26))}
+  .stopwatch.is-failed .btn-main{background:linear-gradient(140deg,#dc2626,#f87171); box-shadow:0 12px 24px -10px rgba(220,38,38,.85)}
+  .stopwatch.is-failed .digits .cs{color:#dc2626}
+  .track.over i{background:linear-gradient(90deg,#dc2626,#f97316)}
   .copy,.chips{opacity:0; transform:translateY(16px); filter:blur(8px); pointer-events:none}
   body.is-revealed .copy,
   body.is-revealed .chips{
@@ -150,6 +212,7 @@
                filter 1.5s cubic-bezier(.22,1,.36,1) .5s;
   }
   body.is-revealed .chips{transition-delay:.72s}
+  body.is-failed .copy{opacity:0; transform:translateY(-16px); filter:blur(6px); transition:opacity 1s ease, transform 1s cubic-bezier(.22,1,.36,1), filter 1s ease}
 
   /* ---------- TIMER SLOT: right / vertical center ---------- */
   .slot{
@@ -268,7 +331,7 @@
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:1000px){
     .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
-    .copy{max-width:none}
+    .stack{max-width:none}
     .slot{justify-self:center; width:min(420px,100%)}
   }
   @media (max-width:640px){
@@ -303,22 +366,37 @@
   <!-- layer 1: still hero image (becomes the timer's backdrop) -->
   <div class="hero__still" role="img" aria-label="가을 햇살이 비치는 보도 위를 걸어가는 학생"></div>
   <!-- layer 2: video, plays exactly once -->
-  <video class="hero__video" id="clip"
+  <video class="hero__video hero__video--main" id="clip"
          src="hero%20page.mp4"
          poster="hero%20page.jpg"
+         preload="auto" muted playsinline disablepictureinpicture></video>
+  <!-- layer 3: shown only when the target time is blown -->
+  <video class="hero__video hero__video--fail" id="failClip"
+         src="TECHNICAL-6-seconds-16-9-480p-final.mp4"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <div class="hero__scrim"></div>
 
   <div class="hero__inner">
-    <div class="copy">
-      <span class="eyebrow"><s></s>오늘의 체육수업 · 목표 시간 안에 달리기</span>
-      <h1>301번 버스,<br><em>곧 출발!</em></h1>
-      <p class="ask">시간 안에 도착할 수 있을까?</p>
-      <p class="lede">정류장까지 <b data-d>120</b>m, 버스 출발까지 <b data-t>30</b>초.<br>출발 신호에 맞춰 달려 목표 시간 안에 결승선을 통과해 보세요.</p>
-      <div class="chips">
-        <span><b data-d>120</b>m 달리기</span>
-        <span>목표 <b data-t>30</b>초 이내</span>
-        <span>나의 기록 확인</span>
+    <div class="stack">
+      <div class="copy">
+        <span class="eyebrow"><s></s>오늘의 체육수업 · 목표 시간 안에 달리기</span>
+        <h1>301번 버스,<br><em>곧 출발!</em></h1>
+        <p class="ask">시간 안에 도착할 수 있을까?</p>
+        <p class="lede">정류장까지 <b data-d>120</b>m, 버스 출발까지 <b data-t>30</b>초.<br>출발 신호에 맞춰 달려 목표 시간 안에 결승선을 통과해 보세요.</p>
+        <div class="chips">
+          <span><b data-d>120</b>m 달리기</span>
+          <span>목표 <b data-t>30</b>초 이내</span>
+          <span>나의 기록 확인</span>
+        </div>
+      </div>
+
+      <!-- replaces the copy once the target is missed -->
+      <div class="fail" id="fail">
+        <span class="fail__tag">진행 종료</span>
+        <h1 class="fail__title">실패</h1>
+        <p class="fail__msg">목표 <b data-t>30</b>초를 <b id="over">0.00</b>초 넘겨 도착했습니다.</p>
+        <p class="fail__sub">다음엔 초반 10초에 속도를 올려보세요. 같은 코스로 바로 다시 도전할 수 있습니다.</p>
+        <button class="fail__btn" id="retry" type="button">다시 도전</button>
       </div>
     </div>
 
@@ -384,6 +462,10 @@
   const sState = document.getElementById('sState');
   const sTime  = document.getElementById('sTime');
   const sLaps  = document.getElementById('sLaps');
+  const failClip = document.getElementById('failClip');
+  const overEl = document.getElementById('over');
+  const track  = document.querySelector('.track');
+  const retry  = document.getElementById('retry');
 
   /* ================= VIDEO : play once, then reveal ================= */
   const ICON_PLAY  = '<path d="M2 1l8 5-8 5z"/>';
@@ -401,6 +483,7 @@
   function startClip(){
     revealed = false;
     if (running) stop();                       // don't hide a live stopwatch behind the clip
+    clearFail();
     document.body.classList.remove('is-revealed');
     hero.classList.remove('is-revealed');
     hero.classList.add('is-playing');
@@ -427,8 +510,8 @@
   replay.addEventListener('click', startClip);
 
   /* ================= STOPWATCH ================= */
-  const RING_MS = 60 * 60 * 1000;         // progress ring = 1 hour
-  let running = false, base = 0, mark = 0, raf = 0, laps = [];
+  const TARGET_MS = (parseFloat(document.querySelector('[data-t]').textContent) || 30) * 1000;
+  let running = false, failed = false, base = 0, mark = 0, raf = 0, laps = [];
 
   const pad = (n, w = 2) => String(n).padStart(w, '0');
   const fmt = ms => {
@@ -447,23 +530,50 @@
     mmEl.textContent = t.m;
     ssEl.textContent = t.s;
     csEl.textContent = '.' + t.cs;
-    total.textContent = (ms / 1000).toFixed(2) + ' 초';
     sTime.textContent = t.full;
-    bar.style.width = Math.min(100, (ms / RING_MS) * 100) + '%';
+
+    const left = TARGET_MS - ms;
+    total.textContent = failed
+      ? '+' + (-left / 1000).toFixed(2) + ' 초 초과'
+      : (ms === 0 ? '목표 ' + (TARGET_MS / 1000) + '초' : Math.max(0, left / 1000).toFixed(2) + '초 남음');
+
+    bar.style.width = Math.min(100, (ms / TARGET_MS) * 100) + '%';
+    track.classList.toggle('over', failed);
+
+    if (running && !failed && ms >= TARGET_MS) { fail(); return; }
     if (running) raf = requestAnimationFrame(paint);
+  }
+
+  function fail(){
+    failed = true;
+    stop();
+    overEl.textContent = ((base - TARGET_MS) / 1000).toFixed(2);
+    document.body.classList.add('is-failed');
+    failClip.currentTime = 0;
+    const p = failClip.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  function clearFail(){
+    if (!failed) return;
+    failed = false;
+    failClip.pause();
+    document.body.classList.remove('is-failed');
   }
 
   function sync(){
     sw.classList.toggle('is-running', running);
-    const label = running ? '정지' : (elapsed() > 0 ? '이어서' : '시작');
-    toggleText.textContent = label;
+    sw.classList.toggle('is-failed', failed);
+    toggleText.textContent = failed ? '다시 도전' : (running ? '정지' : (elapsed() > 0 ? '이어서' : '시작'));
     icoPlay.innerHTML = running ? ICON_PAUSE : ICON_PLAY;
-    stateEl.textContent = running ? '러닝 중' : (elapsed() > 0 ? '일시정지' : '대기');
+    stateEl.textContent = failed ? '실패' : (running ? '러닝 중' : (elapsed() > 0 ? '일시정지' : '대기'));
     sState.textContent = stateEl.textContent;
+    sState.style.color = failed ? '#dc2626' : '';
   }
 
   function start(){
     if (running) return;
+    clearFail();
     mark = performance.now();
     running = true;
     cancelAnimationFrame(raf);
@@ -480,11 +590,27 @@
     sync();
   }
 
-  toggle.addEventListener('click', () => running ? stop() : start());
+  toggle.addEventListener('click', () => {
+    if (failed) { resetAll(); return; }        // "다시 도전"
+    running ? stop() : start();
+  });
+
+  retry.addEventListener('click', () => { resetAll(); start(); });
+
+  function resetAll(){
+    clearFail();
+    running = false;
+    cancelAnimationFrame(raf);
+    base = 0; laps = [];
+    lapsEl.innerHTML = '';
+    sLaps.innerHTML = '0<em>회</em>';
+    paint();
+    sync();
+  }
 
   lapBtn.addEventListener('click', () => {
     const now = elapsed();
-    if (now < 100) return;                      // ignore accidental early taps
+    if (now < 100 || failed) return;            // ignore accidental early taps
     const prev = laps.length ? laps[laps.length - 1].total : 0;
     laps.push({ split: now - prev, total: now });
     lapsEl.innerHTML = '';
@@ -498,15 +624,7 @@
     sLaps.innerHTML = laps.length + '<em>회</em>';
   });
 
-  resetBtn.addEventListener('click', () => {
-    running = false;
-    cancelAnimationFrame(raf);
-    base = 0; laps = [];
-    lapsEl.innerHTML = '';
-    sLaps.innerHTML = '0<em>회</em>';
-    paint();
-    sync();
-  });
+  resetBtn.addEventListener('click', resetAll);
 
   // Space toggles when the stopwatch has focus
   sw.addEventListener('keydown', e => {

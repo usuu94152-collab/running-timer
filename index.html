@@ -74,7 +74,9 @@
     background-image:url("hero%20page.jpg");
     background-size:cover; background-position:60% 50%;
     transform:scale(1.02);
+    transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
   }
+  .hero.is-playing .hero__still{opacity:0}   /* don't spoil the ending while the clip plays */
   /* layer 2: the one-and-only video */
   .hero__video{
     position:absolute; inset:0; z-index:1;
@@ -367,8 +369,7 @@
   <div class="hero__still" role="img" aria-label="가을 햇살이 비치는 보도 위를 걸어가는 학생"></div>
   <!-- layer 2: video, plays exactly once -->
   <video class="hero__video hero__video--main" id="clip"
-         src="hero%20page.mp4"
-         poster="hero%20page.jpg"
+         src="hero%20page.mp4?v=2"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <!-- layer 3: shown only when the target time is blown -->
   <video class="hero__video hero__video--fail" id="failClip"
@@ -470,11 +471,15 @@
   /* ================= VIDEO : play once, then reveal ================= */
   const ICON_PLAY  = '<path d="M2 1l8 5-8 5z"/>';
   const ICON_PAUSE = '<path d="M2 1h3v10H2zM7 1h3v10H7z"/>';
-  let revealed = false;
+  let revealed = false, safety = 0;
+
+  // safety net: never let the timer stay hidden if the clip stalls or never loads
+  function armSafety(ms){ clearTimeout(safety); safety = setTimeout(reveal, ms); }
 
   function reveal(){
     if (revealed) return;
     revealed = true;
+    clearTimeout(safety);
     hero.classList.remove('is-playing');
     hero.classList.add('is-revealed');
     document.body.classList.add('is-revealed');   // every word appears with the timer
@@ -488,25 +493,26 @@
     hero.classList.remove('is-revealed');
     hero.classList.add('is-playing');
     clip.currentTime = 0;
+    armSafety(8000);                           // clip must start within 8s
     const p = clip.play();
     if (p && p.catch) p.catch(() => setTimeout(reveal, 900));
   }
 
   clip.addEventListener('ended', reveal);
   clip.addEventListener('error', reveal);
-  // safety net: never let the timer stay hidden
-  setTimeout(reveal, 12000);
+  clip.addEventListener('playing', () => {    // once rolling, allow the rest of the clip + slack
+    if (!revealed) armSafety(((clip.duration || 10) - clip.currentTime) * 1000 + 3000);
+  });
 
+  // plays on every page load (incl. back/forward cache restores)
   function begin(){
-    if (reduced()) { reveal(); return; }          // motion-sensitive: skip the clip
-    const started = clip.play();
-    if (started && started.catch) started.catch(reveal);
+    if (reduced()) { revealed = false; reveal(); return; }   // motion-sensitive: skip the clip
+    startClip();
   }
 
   function reduced(){ return matchMedia('(prefers-reduced-motion: reduce)').matches; }
 
   clip.muted = true;            // autoplay-safe
-  begin();
   replay.addEventListener('click', startClip);
 
   /* ================= STOPWATCH ================= */
@@ -633,6 +639,9 @@
 
   paint();
   sync();
+
+  begin();                      // after the stopwatch state exists (startClip reads it)
+  addEventListener('pageshow', e => { if (e.persisted) begin(); });
 })();
 </script>
 </body>

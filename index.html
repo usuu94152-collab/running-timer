@@ -214,7 +214,8 @@
                filter 1.5s cubic-bezier(.22,1,.36,1) .5s;
   }
   body.is-revealed .chips{transition-delay:.72s}
-  body.is-failed .copy{opacity:0; transform:translateY(-16px); filter:blur(6px); transition:opacity 1s ease, transform 1s cubic-bezier(.22,1,.36,1), filter 1s ease}
+  body.is-failed .copy{opacity:0; transform:translateY(-16px); filter:blur(6px); pointer-events:none; transition:opacity 1s ease, transform 1s cubic-bezier(.22,1,.36,1), filter 1s ease}
+  body.is-failed .chips{pointer-events:none}   /* hidden copy must not cover the retry button */
 
   /* ---------- TIMER SLOT: right / vertical center ---------- */
   .slot{
@@ -371,9 +372,9 @@
   <video class="hero__video hero__video--main" id="clip"
          src="hero%20page.mp4?v=2"
          preload="auto" muted playsinline disablepictureinpicture></video>
-  <!-- layer 3: shown only when the target time is blown -->
+  <!-- layer 3: shown only when the run is stopped past the target time -->
   <video class="hero__video hero__video--fail" id="failClip"
-         src="TECHNICAL-6-seconds-16-9-480p-final.mp4"
+         src="TECHNICAL-6-seconds-16-9-480p-final.mp4?v=2"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <div class="hero__scrim"></div>
 
@@ -539,20 +540,26 @@
     sTime.textContent = t.full;
 
     const left = TARGET_MS - ms;
-    total.textContent = failed
+    total.textContent = left < 0
       ? '+' + (-left / 1000).toFixed(2) + ' 초 초과'
-      : (ms === 0 ? '목표 ' + (TARGET_MS / 1000) + '초' : Math.max(0, left / 1000).toFixed(2) + '초 남음');
+      : (ms === 0 ? '목표 ' + (TARGET_MS / 1000) + '초' : (left / 1000).toFixed(2) + '초 남음');
 
     bar.style.width = Math.min(100, (ms / TARGET_MS) * 100) + '%';
-    track.classList.toggle('over', failed);
+    track.classList.toggle('over', left < 0);
 
-    if (running && !failed && ms >= TARGET_MS) { fail(); return; }
     if (running) raf = requestAnimationFrame(paint);
+  }
+
+  // "정지" pressed: judge the run only now, not the moment the target passes
+  function finish(){
+    stop();
+    if (base > TARGET_MS) fail();
   }
 
   function fail(){
     failed = true;
-    stop();
+    paint();
+    sync();
     overEl.textContent = ((base - TARGET_MS) / 1000).toFixed(2);
     document.body.classList.add('is-failed');
     failClip.currentTime = 0;
@@ -598,7 +605,7 @@
 
   toggle.addEventListener('click', () => {
     if (failed) { resetAll(); return; }        // "다시 도전"
-    running ? stop() : start();
+    running ? finish() : start();
   });
 
   retry.addEventListener('click', () => { resetAll(); start(); });
@@ -634,7 +641,7 @@
 
   // Space toggles when the stopwatch has focus
   sw.addEventListener('keydown', e => {
-    if (e.code === 'Space' && e.target === sw) { e.preventDefault(); running ? stop() : start(); }
+    if (e.code === 'Space' && e.target === sw) { e.preventDefault(); if (failed) resetAll(); else running ? finish() : start(); }
   });
 
   paint();

@@ -640,8 +640,9 @@
     running ? finish() : start();
   });
 
-  retry.addEventListener('click', () => { resetAll(); start(); });
-  retryOk.addEventListener('click', () => { resetAll(); start(); });
+  // "다시 도전": back to a ready (00:00.00) timer; the run starts on "시작"
+  retry.addEventListener('click', resetAll);
+  retryOk.addEventListener('click', resetAll);
 
   function resetAll(){
     clearResult();

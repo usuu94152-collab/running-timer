@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>달리기 · 러닝 타이머</title>
+<title>지그재그 달리기 · 러닝 타이머</title>
 <style>
   :root{
     --ink:#0b1526;
@@ -74,7 +74,7 @@
      so the face doesn't sit behind the copy and the timer */
   .hero__still{
     position:absolute; inset:0; z-index:0;
-    background-image:url("hero%20page.jpg?v=2");
+    background-image:url("zigzag.jpg");
     background-size:cover; background-position:60% 50%;
     transform:scale(1.02);
     transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
@@ -347,7 +347,7 @@
 
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:1000px){
-    .hero__still{background-image:url("hero-mobile.jpg")}
+    .hero__still{background-image:url("zigzag-mobile.jpg")}
     .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
     .stack{max-width:none}
     .slot{justify-self:center; width:min(420px,100%)}
@@ -376,55 +376,49 @@
   <nav class="nav">
     <div class="brand"><i>▶</i>달리기</div>
     <ul>
-      <li><a href="index.html" aria-current="page">301번 버스</a></li>
-      <li><a href="zigzag.html">지그재그</a></li>
+      <li><a href="index.html">301번 버스</a></li>
+      <li><a href="zigzag.html" aria-current="page">지그재그</a></li>
       <li><a href="#stats">기록</a></li>
     </ul>
   </nav>
 
   <!-- layer 1: still hero image (becomes the timer's backdrop) -->
-  <div class="hero__still" role="img" aria-label="가을 햇살이 비치는 보도 위를 걸어가는 학생"></div>
+  <div class="hero__still" role="img" aria-label="교문 앞 등굣길에서 친구들 사이를 지그재그로 달리는 학생"></div>
   <!-- layer 2: video, plays exactly once -->
   <video class="hero__video hero__video--main" id="clip"
-         src="hero%20page.mp4?v=2"
+         src="EPISODE-2-CUT01-CUT02-COMBINED.mp4"
          preload="auto" muted playsinline disablepictureinpicture></video>
-  <!-- layer 3: result clips, shown when the run is stopped (within / past the target time) -->
-  <video class="hero__video hero__video--ok" id="okClip"
-         src="CUT03-B-A-SMALL-KINDNESS-6-seconds-1.mp4"
-         preload="auto" muted playsinline disablepictureinpicture></video>
-  <video class="hero__video hero__video--fail" id="failClip"
-         src="TECHNICAL-6-seconds-16-9-480p-final.mp4?v=2"
-         preload="auto" muted playsinline disablepictureinpicture></video>
+  <!-- layer 3: no result clips for this course yet (the result panel shows over the still) -->
   <div class="hero__scrim"></div>
 
   <div class="hero__inner">
     <div class="stack">
       <div class="copy">
-        <span class="eyebrow"><s></s>오늘의 체육수업 · 목표 시간 안에 달리기</span>
-        <h1>301번 버스,<br><em>곧 출발!</em></h1>
-        <p class="ask">시간 안에 도착할 수 있을까?</p>
-        <p class="lede">정류장까지 <b data-d>120</b>m, 버스 출발까지 <b data-t>30</b>초.<br>출발 신호에 맞춰 달려 목표 시간 안에 결승선을 통과해 보세요.</p>
+        <span class="eyebrow"><s></s>오늘의 체육수업 · 지그재그 달리기</span>
+        <h1>교문이 닫힌다,<br><em>지각 1초 전!</em></h1>
+        <p class="ask">친구들 사이를 뚫고 교문을 통과할 수 있을까?</p>
+        <p class="lede">교문까지 <b data-d>40</b>m, 콘 <b>6</b>개를 지그재그로 돌아야 합니다. 교문이 닫히기까지 <b data-t>20</b>초.<br>출발 신호에 맞춰 달려 교문이 닫히기 전에 들어가 보세요.</p>
         <div class="chips">
-          <span><b data-d>120</b>m 달리기</span>
-          <span>목표 <b data-t>30</b>초 이내</span>
+          <span>지그재그 <b data-d>40</b>m</span>
+          <span>목표 <b data-t>20</b>초 이내</span>
           <span>나의 기록 확인</span>
         </div>
       </div>
 
       <!-- replace the copy once the run is stopped -->
       <div class="result result--ok" id="success">
-        <span class="result__tag">탑승 완료</span>
+        <span class="result__tag">교문 통과</span>
         <h1 class="result__title">성공</h1>
-        <p class="result__msg">목표 <b data-t>30</b>초보다 <b id="under">0.00</b>초 빨리 도착했습니다.</p>
-        <p class="result__sub">301번 버스에 무사히 탔어요. 같은 코스로 기록 단축에 다시 도전해 보세요.</p>
+        <p class="result__msg">교문이 닫히기 <b id="under">0.00</b>초 전에 들어갔습니다.</p>
+        <p class="result__sub">오늘은 지각 면제! 같은 코스로 기록 단축에 다시 도전해 보세요.</p>
         <button class="result__btn" id="retryOk" type="button">다시 도전</button>
       </div>
 
       <div class="result result--fail" id="fail">
-        <span class="result__tag">진행 종료</span>
+        <span class="result__tag">교문 닫힘</span>
         <h1 class="result__title">실패</h1>
-        <p class="result__msg">목표 <b data-t>30</b>초를 <b id="over">0.00</b>초 넘겨 도착했습니다.</p>
-        <p class="result__sub">다음엔 초반 10초에 속도를 올려보세요. 같은 코스로 바로 다시 도전할 수 있습니다.</p>
+        <p class="result__msg">목표 <b data-t>20</b>초를 <b id="over">0.00</b>초 넘겨 교문이 닫혔습니다.</p>
+        <p class="result__sub">콘을 돌 때 몸을 낮추고 바깥발로 강하게 밀어 방향을 바꿔 보세요. 같은 코스로 바로 다시 도전할 수 있습니다.</p>
         <button class="result__btn" id="retry" type="button">다시 도전</button>
       </div>
     </div>
@@ -458,7 +452,7 @@
     </div>
   </div>
 
-  <button class="replay" id="replay" type="button" aria-label="히어로 영상 다시 재생">
+  <button class="replay" id="replay" type="button" aria-label="인트로 영상 다시 재생">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
     영상 다시 보기
   </button>

@@ -68,10 +68,12 @@
     background:#0b1526;
   }
 
-  /* layer 1: still image (revealed after the video ends) */
+  /* layer 1: still image (revealed after the video ends)
+     desktop: the clip's last frame (seamless hand-off); stacked layout: a wide frame
+     so the face doesn't sit behind the copy and the timer */
   .hero__still{
     position:absolute; inset:0; z-index:0;
-    background-image:url("hero%20page.jpg");
+    background-image:url("hero%20page.jpg?v=2");
     background-size:cover; background-position:60% 50%;
     transform:scale(1.02);
     transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
@@ -344,6 +346,7 @@
 
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:1000px){
+    .hero__still{background-image:url("hero-mobile.jpg")}
     .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
     .stack{max-width:none}
     .slot{justify-self:center; width:min(420px,100%)}

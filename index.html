@@ -353,8 +353,9 @@
     .slot{justify-self:center; width:min(420px,100%)}
   }
   @media (max-width:640px){
-    .nav ul{gap:14px}
+    .nav ul{gap:12px}
     .nav a{font-size:13px}
+    .nav__stats{display:none}   /* room for the three course links */
     .hero{min-height:auto; padding:0}
     .hero__inner{padding:104px 18px 86px}
     .slot{justify-self:stretch; width:100%}
@@ -378,7 +379,8 @@
     <ul>
       <li><a href="index.html" aria-current="page">301번 버스</a></li>
       <li><a href="zigzag.html">지그재그</a></li>
-      <li><a href="#stats">기록</a></li>
+      <li><a href="relay.html">이어달리기</a></li>
+      <li class="nav__stats"><a href="#stats">기록</a></li>
     </ul>
   </nav>
 

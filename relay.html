@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>지그재그 달리기 · 러닝 타이머</title>
+<title>이어달리기 · 러닝 타이머</title>
 <style>
   :root{
     --ink:#0b1526;
@@ -74,7 +74,7 @@
      so the face doesn't sit behind the copy and the timer */
   .hero__still{
     position:absolute; inset:0; z-index:0;
-    background-image:url("zigzag.jpg");
+    background-image:url("relay.jpg");
     background-size:cover; background-position:60% 50%;
     transform:scale(1.02);
     transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
@@ -347,7 +347,7 @@
 
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:1000px){
-    .hero__still{background-image:url("zigzag-mobile.jpg")}
+    .hero__still{background-image:url("relay-mobile.jpg")}
     .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
     .stack{max-width:none}
     .slot{justify-self:center; width:min(420px,100%)}
@@ -378,55 +378,55 @@
     <div class="brand"><i>▶</i>달리기</div>
     <ul>
       <li><a href="index.html">301번 버스</a></li>
-      <li><a href="zigzag.html" aria-current="page">지그재그</a></li>
-      <li><a href="relay.html">이어달리기</a></li>
+      <li><a href="zigzag.html">지그재그</a></li>
+      <li><a href="relay.html" aria-current="page">이어달리기</a></li>
       <li class="nav__stats"><a href="#stats">기록</a></li>
     </ul>
   </nav>
 
   <!-- layer 1: still hero image (becomes the timer's backdrop) -->
-  <div class="hero__still" role="img" aria-label="교문 앞 등굣길에서 친구들 사이를 지그재그로 달리는 학생"></div>
+  <div class="hero__still" role="img" aria-label="운동장 트랙에서 바통을 건네받으려 손을 뻗는 이어달리기 주자"></div>
   <!-- layer 2: video, plays exactly once -->
   <video class="hero__video hero__video--main" id="clip"
-         src="EPISODE-2-CUT01-CUT02-COMBINED.mp4"
+         src="RELAY-CUT01-CUT02-COMBINED.mp4"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <!-- layer 3: result clips, shown when the run is stopped (within / past the target time) -->
   <video class="hero__video hero__video--ok" id="okClip"
-         src="EPISODE-2-CUT03-A-MADE-IT-6-seconds.mp4"
+         src="RELAY-CUT03-A-FIRST-ACROSS-6-seconds.mp4"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <video class="hero__video hero__video--fail" id="failClip"
-         src="EPISODE-2-CUT03-B-SHUT-OUT-6-seconds.mp4"
+         src="RELAY-CUT03-B-HALF-A-STEP-6-seconds.mp4"
          preload="auto" muted playsinline disablepictureinpicture></video>
   <div class="hero__scrim"></div>
 
   <div class="hero__inner">
     <div class="stack">
       <div class="copy">
-        <span class="eyebrow"><s></s>오늘의 체육수업 · 지그재그 달리기</span>
-        <h1>교문이 닫힌다,<br><em>지각 1초 전!</em></h1>
-        <p class="ask">친구들 사이를 뚫고 교문을 통과할 수 있을까?</p>
-        <p class="lede">교문까지 <b data-d>40</b>m, 콘 <b>6</b>개를 지그재그로 돌아야 합니다. 교문이 닫히기까지 <b data-t>20</b>초.<br>출발 신호에 맞춰 달려 교문이 닫히기 전에 들어가 보세요.</p>
+        <span class="eyebrow"><s></s>오늘의 체육수업 · 이어달리기 과제</span>
+        <h1>바통을 이어,<br><em>하나의 팀으로!</em></h1>
+        <p class="ask">네 명의 달리기가 하나로 이어질 수 있을까?</p>
+        <p class="lede">주자 4명이 <b data-d>50</b>m씩, 바통을 넘겨 모두 <b>200</b>m. 팀 목표 <b data-t>35</b>초.<br>첫 주자 출발과 함께 시작하고, 마지막 주자가 결승선을 통과하면 정지를 누르세요.</p>
         <div class="chips">
-          <span>지그재그 <b data-d>40</b>m</span>
-          <span>목표 <b data-t>20</b>초 이내</span>
-          <span>나의 기록 확인</span>
+          <span>4 × <b data-d>50</b>m 이어달리기</span>
+          <span>팀 목표 <b data-t>35</b>초 이내</span>
+          <span>랩 버튼으로 주자별 기록</span>
         </div>
       </div>
 
       <!-- replace the copy once the run is stopped -->
       <div class="result result--ok" id="success">
-        <span class="result__tag">교문 통과</span>
+        <span class="result__tag">팀 목표 달성</span>
         <h1 class="result__title">성공</h1>
-        <p class="result__msg">교문이 닫히기 <b id="under">0.00</b>초 전에 들어갔습니다.</p>
-        <p class="result__sub">오늘은 지각 면제! 같은 코스로 기록 단축에 다시 도전해 보세요.</p>
+        <p class="result__msg">팀 목표보다 <b id="under">0.00</b>초 빨리 결승선을 통과했습니다.</p>
+        <p class="result__sub">네 명이 하나로 이어진 달리기! 바통 터치를 더 다듬어 기록 단축에 다시 도전해 보세요.</p>
         <button class="result__btn" id="retryOk" type="button">다시 도전</button>
       </div>
 
       <div class="result result--fail" id="fail">
-        <span class="result__tag">교문 닫힘</span>
+        <span class="result__tag">반 발 차이</span>
         <h1 class="result__title">실패</h1>
-        <p class="result__msg">목표 <b data-t>20</b>초를 <b id="over">0.00</b>초 넘겨 교문이 닫혔습니다.</p>
-        <p class="result__sub">콘을 돌 때 몸을 낮추고 바깥발로 강하게 밀어 방향을 바꿔 보세요. 같은 코스로 바로 다시 도전할 수 있습니다.</p>
+        <p class="result__msg">팀 목표 <b data-t>35</b>초를 <b id="over">0.00</b>초 넘겨 들어왔습니다.</p>
+        <p class="result__sub">바통 터치 구간에서 받는 주자가 미리 출발해 속도를 붙여 보세요. 같은 팀으로 바로 다시 도전할 수 있습니다.</p>
         <button class="result__btn" id="retry" type="button">다시 도전</button>
       </div>
     </div>

@@ -70,11 +70,10 @@
   }
 
   /* layer 1: still image (revealed after the video ends)
-     desktop: the clip's last frame (seamless hand-off); stacked layout: a wide frame
-     so the face doesn't sit behind the copy and the timer */
+     this course uses the 10.2s mid-hurdle frame on every screen size */
   .hero__still{
     position:absolute; inset:0; z-index:0;
-    background-image:url("bread.jpg");
+    background-image:url("bread-hurdle.jpg");
     background-size:cover; background-position:60% 50%;
     transform:scale(1.02);
     transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
@@ -347,7 +346,7 @@
 
   /* ---------- RESPONSIVE ---------- */
   @media (max-width:1000px){
-    .hero__still{background-image:url("bread-mobile.jpg"); background-position:52% 50%}   /* keep the hurdler in frame */
+    .hero__still{background-position:52% 50%}   /* keep the hurdler in frame */
     .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
     .stack{max-width:none}
     .slot{justify-self:center; width:min(420px,100%)}

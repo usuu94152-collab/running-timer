@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>장애물 달리기 · 러닝 타이머</title>
+<style>
+  :root{
+    --ink:#0b1526;
+    --ink-soft:#5b6b86;
+    --line:rgba(11,21,38,.10);
+    --card:rgba(255,255,255,.58);
+    --accent:#1f6feb;
+    --accent-2:#ff7a45;
+    --ok:#12a150;
+    --shadow:0 24px 60px -20px rgba(11,21,38,.45);
+    --font:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--font);
+    color:var(--ink);
+    background:#eef2f7;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- NAV ---------- */
+  .nav{
+    position:absolute; inset:0 0 auto 0; z-index:6;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px clamp(18px,4vw,54px);
+    color:#fff; mix-blend-mode:normal;
+    opacity:0; transform:translateY(-12px); pointer-events:none;
+  }
+  body.is-revealed .nav{
+    opacity:1; transform:none; pointer-events:auto;
+    transition:opacity 1.4s cubic-bezier(.22,1,.36,1) .6s, transform 1.4s cubic-bezier(.22,1,.36,1) .6s;
+  }
+  .brand{
+    display:flex; align-items:center; gap:10px;
+    font-weight:800; letter-spacing:-.02em; font-size:17px;
+    text-shadow:0 2px 12px rgba(0,0,0,.35);
+  }
+  .brand i{
+    width:26px; height:26px; border-radius:9px; display:grid; place-items:center;
+    background:linear-gradient(140deg,var(--accent),#5aa9ff);
+    box-shadow:0 6px 16px rgba(31,111,235,.45);
+    font-style:normal; font-size:14px;
+  }
+  .nav ul{display:flex; gap:clamp(14px,2.4vw,30px); margin:0; padding:0; list-style:none}
+  .nav a{
+    color:rgba(255,255,255,.86); text-decoration:none; font-size:14px; font-weight:600;
+    text-shadow:0 2px 10px rgba(0,0,0,.35);
+  }
+  .nav a:hover,.nav a[aria-current]{color:#fff}
+  .nav a[aria-current]{text-decoration:underline; text-underline-offset:6px; text-decoration-thickness:2px}
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative;
+    min-height:100vh;
+    min-height:100svh;
+    display:flex; align-items:center;
+    overflow:hidden;
+    isolation:isolate;
+    background:#0b1526;
+  }
+
+  /* layer 1: still image (revealed after the video ends)
+     desktop: the clip's last frame (seamless hand-off); stacked layout: a wide frame
+     so the face doesn't sit behind the copy and the timer */
+  .hero__still{
+    position:absolute; inset:0; z-index:0;
+    background-image:url("bread.jpg");
+    background-size:cover; background-position:60% 50%;
+    transform:scale(1.02);
+    transition:opacity 1.8s cubic-bezier(.37,0,.18,1);
+  }
+  .hero.is-playing .hero__still{opacity:0}   /* don't spoil the ending while the clip plays */
+  /* layer 2: the one-and-only video */
+  .hero__video{
+    position:absolute; inset:0; z-index:1;
+    width:100%; height:100%; object-fit:cover; object-position:60% 50%;
+    opacity:0;
+    will-change:opacity,transform;
+  }
+  .hero__video--main{transition:opacity 1.8s cubic-bezier(.37,0,.18,1), transform 9s linear}
+  .hero.is-playing  .hero__video--main{opacity:1; transform:scale(1.045)}
+  .hero.is-revealed .hero__video--main{opacity:0; transform:scale(1.01)}
+
+  .hero__video--fail,.hero__video--ok{z-index:1; transform:scale(1.03); transition:opacity 1.1s cubic-bezier(.37,0,.18,1)}
+  body.is-failed .hero__video--fail,
+  body.is-success .hero__video--ok{opacity:1; transform:scale(1)}
+
+  /* legibility scrims */
+  .hero__scrim{
+    position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:
+      linear-gradient(90deg, rgba(6,14,28,.50) 0%, rgba(6,14,28,.24) 30%, rgba(6,14,28,0) 52%),
+      linear-gradient(0deg, rgba(6,14,28,.48) 0%, rgba(6,14,28,0) 40%),
+      linear-gradient(180deg, rgba(6,14,28,.40) 0%, rgba(6,14,28,0) 24%);
+    opacity:0; transition:opacity 2s cubic-bezier(.37,0,.18,1) .1s;
+  }
+  body.is-revealed .hero__scrim{opacity:1}
+
+  /* ---------- COPY ---------- */
+  .hero__inner{
+    position:relative; z-index:4;
+    width:100%;
+    padding:120px clamp(18px,4vw,54px) 96px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;
+    gap:clamp(24px,4vw,60px);
+  }
+  .copy{max-width:none}
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 14px 7px 10px; border-radius:999px;
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    color:#fff; font-size:12.5px; font-weight:700; letter-spacing:.01em;
+  }
+  .eyebrow s{width:7px; height:7px; border-radius:50%; background:#5ee08a; box-shadow:0 0 0 4px rgba(94,224,138,.22)}
+  h1{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(36px,5vw,64px); line-height:1.06; letter-spacing:-.035em; font-weight:800;
+    text-shadow:0 6px 34px rgba(4,10,20,.5);
+  }
+  h1 em{font-style:normal; color:#ffd7c2}
+  .ask{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(17px,1.7vw,23px); font-weight:700; letter-spacing:-.02em;
+    text-shadow:0 2px 18px rgba(4,10,20,.55);
+  }
+  .lede{
+    margin:12px 0 0; color:rgba(255,255,255,.9);
+    font-size:clamp(14.5px,1.2vw,17px); line-height:1.7; font-weight:500;
+    text-shadow:0 2px 18px rgba(4,10,20,.5);
+    max-width:36em;
+  }
+  .lede b{color:#fff; font-weight:800; font-family:var(--mono); font-size:1.06em; letter-spacing:-.02em}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:26px}
+  .chips span{
+    padding:7px 13px; border-radius:999px; font-size:12.5px; font-weight:700;
+    background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.22);
+    color:rgba(255,255,255,.94); backdrop-filter:blur(8px);
+  }
+  .chips b{color:#ffd7c2; font-family:var(--mono); font-weight:800}
+
+  /* ---------- RESULT STATE (success / fail) ---------- */
+  .stack{
+    position:relative;
+    display:grid;                       /* copy and result message share one cell */
+    max-width:min(560px,46vw);
+  }
+  .copy,.result{grid-area:1 / 1}
+  .result{
+    opacity:0; transform:translateY(20px) scale(.98); filter:blur(10px);
+    pointer-events:none;
+  }
+  body.is-failed .result--fail,
+  body.is-success .result--ok{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.2s cubic-bezier(.22,1,.36,1) .35s,
+               transform 1.3s cubic-bezier(.16,1,.3,1) .35s,
+               filter 1.2s cubic-bezier(.22,1,.36,1) .35s;
+  }
+  .result__tag{
+    display:inline-block; padding:7px 15px; border-radius:999px;
+    background:#dc2626; color:#fff;
+    font-size:12.5px; font-weight:800; letter-spacing:.07em;
+    box-shadow:0 10px 26px -10px rgba(220,38,38,.95);
+  }
+  .result__title{
+    margin:18px 0 0; color:#fff;
+    font-size:clamp(54px,7.6vw,100px); line-height:.94; letter-spacing:-.05em; font-weight:800;
+    text-shadow:0 8px 40px rgba(4,10,20,.6);
+  }
+  .result__msg{
+    margin:20px 0 0; color:#fff;
+    font-size:clamp(17px,1.75vw,23px); font-weight:700; letter-spacing:-.02em; line-height:1.45;
+    text-shadow:0 2px 20px rgba(4,10,20,.6);
+  }
+  .result__msg b{color:#ffb4a2; font-family:var(--mono); font-weight:800; font-size:1.08em}
+  .result__sub{
+    margin:12px 0 0; color:rgba(255,255,255,.86);
+    font-size:clamp(14px,1.15vw,16.5px); line-height:1.7; font-weight:500;
+    text-shadow:0 2px 18px rgba(4,10,20,.55); max-width:36em;
+  }
+  .result__btn{
+    margin-top:28px; padding:17px 30px; border-radius:18px; font-size:16px;
+    color:#fff; background:linear-gradient(140deg,#dc2626,#f97316);
+    box-shadow:0 18px 34px -14px rgba(220,38,38,.95);
+  }
+  .result__btn:hover{filter:brightness(1.07)}
+  .result--ok .result__tag{background:#16a34a; box-shadow:0 10px 26px -10px rgba(22,163,74,.95)}
+  .result--ok .result__msg b{color:#bbf7d0}
+  .result--ok .result__btn{background:linear-gradient(140deg,#16a34a,#22c55e); box-shadow:0 18px 34px -14px rgba(22,163,74,.95)}
+  body.is-failed .copy, body.is-success .copy{opacity:0; transform:translateY(-16px); filter:blur(6px)}
+  body.is-failed .hero__scrim{
+    background:
+      linear-gradient(90deg, rgba(32,6,10,.62) 0%, rgba(32,6,10,.30) 32%, rgba(32,6,10,0) 54%),
+      linear-gradient(0deg, rgba(32,6,10,.5) 0%, rgba(32,6,10,0) 40%),
+      linear-gradient(180deg, rgba(32,6,10,.44) 0%, rgba(32,6,10,0) 24%);
+  }
+  .stopwatch.is-failed .sw-dot{background:#dc2626}
+  .stopwatch.is-failed .sw-state{background:rgba(220,38,38,.13); color:#b91c1c}
+  .stopwatch.is-failed::before{opacity:1; animation:none; filter:blur(22px); background:linear-gradient(140deg,rgba(220,38,38,.32),rgba(249,115,22,.26))}
+  .stopwatch.is-failed .btn-main{background:linear-gradient(140deg,#dc2626,#f87171); box-shadow:0 12px 24px -10px rgba(220,38,38,.85)}
+  .stopwatch.is-failed .digits .cs{color:#dc2626}
+  .stopwatch.is-success .sw-dot{background:var(--ok)}
+  .stopwatch.is-success .sw-state{background:rgba(18,161,80,.14); color:#0b7a3d}
+  .stopwatch.is-success::before{opacity:1; animation:none; filter:blur(22px); background:linear-gradient(140deg,rgba(18,161,80,.32),rgba(74,222,128,.26))}
+  .stopwatch.is-success .btn-main{background:linear-gradient(140deg,#16a34a,#22c55e); box-shadow:0 12px 24px -10px rgba(22,163,74,.85)}
+  .stopwatch.is-success .digits .cs{color:var(--ok)}
+  .stopwatch.is-success .track i{background:linear-gradient(90deg,#12a150,#4ade80)}
+  .track.over i{background:linear-gradient(90deg,#dc2626,#f97316)}
+  .copy,.chips{opacity:0; transform:translateY(16px); filter:blur(8px); pointer-events:none}
+  body.is-revealed .copy,
+  body.is-revealed .chips{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.5s cubic-bezier(.22,1,.36,1) .5s,
+               transform 1.5s cubic-bezier(.22,1,.36,1) .5s,
+               filter 1.5s cubic-bezier(.22,1,.36,1) .5s;
+  }
+  body.is-revealed .chips{transition-delay:.72s}
+  body.is-failed .copy, body.is-success .copy{opacity:0; transform:translateY(-16px); filter:blur(6px); pointer-events:none; transition:opacity 1s ease, transform 1s cubic-bezier(.22,1,.36,1), filter 1s ease}
+  body.is-failed .chips, body.is-success .chips{pointer-events:none}   /* hidden copy must not cover the retry button */
+
+  /* ---------- TIMER SLOT: right / vertical center ---------- */
+  .slot{
+    justify-self:end; align-self:center;
+    width:min(368px,92vw);
+  }
+  .stopwatch{
+    position:relative;
+    padding:32px 32px 26px;
+    border-radius:32px;
+    background:var(--card);
+    border:1px solid rgba(255,255,255,.55);
+    box-shadow:0 32px 70px -22px rgba(11,21,38,.5), inset 0 1px 0 rgba(255,255,255,.75);
+    backdrop-filter:blur(30px) saturate(1.7);
+    -webkit-backdrop-filter:blur(30px) saturate(1.7);
+    opacity:0; transform:translateY(20px) scale(.96); filter:blur(12px);
+    pointer-events:none;
+  }
+  body.is-revealed .stopwatch{
+    opacity:1; transform:none; filter:none; pointer-events:auto;
+    transition:opacity 1.5s cubic-bezier(.22,1,.36,1) .25s,
+               transform 1.6s cubic-bezier(.16,1,.3,1) .25s,
+               filter 1.5s cubic-bezier(.22,1,.36,1) .25s;
+  }
+  /* running glow ring */
+  .stopwatch::before{
+    content:""; position:absolute; inset:-2px; border-radius:34px; z-index:-1;
+    background:linear-gradient(140deg,rgba(31,111,235,.5),rgba(255,122,69,.42));
+    opacity:0; transition:opacity .6s ease; filter:blur(16px);
+  }
+  .stopwatch.is-running::before{opacity:1; animation:breathe 2.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.55}50%{opacity:1}}
+
+  .sw-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px}
+  .sw-label{display:flex; align-items:center; gap:10px; font-size:12.5px; font-weight:800; letter-spacing:.15em; color:var(--ink-soft); text-transform:uppercase}
+  .sw-dot{width:10px; height:10px; border-radius:50%; background:#b9c4d4; transition:background .3s}
+  .is-running .sw-dot{background:var(--ok); box-shadow:0 0 0 0 rgba(18,161,80,.5); animation:pulse 1.6s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(18,161,80,0)}100%{box-shadow:0 0 0 0 rgba(18,161,80,0)}}
+  .sw-state{
+    font-size:12.5px; font-weight:800; padding:6px 12px; border-radius:999px;
+    background:rgba(11,21,38,.06); color:var(--ink-soft);
+  }
+  .is-running .sw-state{background:rgba(18,161,80,.14); color:#0b7a3d}
+
+  .digits{
+    display:flex; align-items:baseline;
+    font-family:var(--font);
+    font-weight:800;
+    font-size:clamp(52px,5.4vw,70px); line-height:1; letter-spacing:-.05em;
+    color:var(--ink);
+    font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+  }
+  .digits .sep{opacity:.3; padding:0 3px; font-weight:600}
+  .digits .cs{color:var(--accent-2); font-weight:800; font-size:.7em; letter-spacing:-.04em}
+
+  .track{height:5px; border-radius:99px; background:rgba(11,21,38,.10); margin:22px 0 5px; overflow:hidden}
+  .track i{display:block; height:100%; width:0%; border-radius:99px; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .12s linear}
+  .hint{font-size:12.5px; font-weight:600; color:var(--ink-soft); margin:0 0 20px; display:flex; justify-content:space-between; gap:10px}
+
+  .sw-btns{display:grid; grid-template-columns:1.55fr 1fr 1fr; gap:10px}
+  button{
+    font-family:inherit; font-size:15.5px; font-weight:800; letter-spacing:-.01em;
+    border:0; border-radius:17px; padding:17px 10px; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button:active{transform:translateY(1px) scale(.985)}
+  button:focus-visible{outline:3px solid rgba(31,111,235,.45); outline-offset:2px}
+  .btn-main{color:#fff; background:linear-gradient(140deg,#1f6feb,#3f8dff); box-shadow:0 12px 24px -10px rgba(31,111,235,.85)}
+  .stopwatch.is-running .btn-main{background:linear-gradient(140deg,#e8590c,#ff8a3d); box-shadow:0 12px 24px -10px rgba(232,89,12,.8)}
+  .btn-ghost{color:var(--ink); background:rgba(11,21,38,.06)}
+  .btn-ghost:hover{background:rgba(11,21,38,.1)}
+
+  .laps{margin:18px 0 0; padding:0; list-style:none; max-height:112px; overflow:auto; display:grid; gap:7px}
+  .laps li{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    font-family:var(--mono); font-size:13.5px; font-weight:600; color:var(--ink);
+    background:rgba(11,21,38,.05); border-radius:12px; padding:9px 13px;
+  }
+  .laps li span{color:var(--ink-soft); font-size:11.5px; font-family:var(--font); font-weight:700}
+  .laps:empty{display:none}
+
+  /* replay the hero clip */
+  .replay{
+    position:absolute; z-index:5; right:clamp(18px,4vw,54px); bottom:clamp(18px,4vw,44px);
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 15px; border-radius:999px; cursor:pointer;
+    background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.3);
+    color:#fff; font-family:inherit; font-size:12.5px; font-weight:700;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    opacity:0; transform:translateY(10px); pointer-events:none;
+    transition:opacity .6s ease, transform .6s ease, background .2s ease;
+  }
+  .replay:hover{background:rgba(255,255,255,.26)}
+  body.is-revealed .replay{opacity:1; transform:none; pointer-events:auto; transition-delay:.9s}
+  .replay svg{width:14px; height:14px}
+
+  /* ---------- NEXT SECTION ---------- */
+  .stats{
+    position:relative; z-index:2;
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+    background:var(--line);
+    border-top:1px solid var(--line);
+    opacity:0; transform:translateY(16px); pointer-events:none;
+  }
+  body.is-revealed .stats{
+    opacity:1; transform:none; pointer-events:auto;
+    transition:opacity 1.3s cubic-bezier(.22,1,.36,1) .85s, transform 1.3s cubic-bezier(.22,1,.36,1) .85s;
+  }
+  .stat{background:#fff; padding:26px clamp(16px,3vw,34px)}
+  .stat b{display:block; font-size:12px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft); text-transform:uppercase}
+  .stat strong{display:block; margin-top:8px; font-family:var(--mono); font-size:clamp(20px,2.4vw,30px); font-weight:700; letter-spacing:-.02em}
+  .stat em{font-style:normal; font-size:13px; font-weight:700; color:var(--ink-soft); margin-left:4px}
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:1000px){
+    .hero__still{background-image:url("bread-mobile.jpg"); background-position:52% 50%}   /* keep the hurdler in frame */
+    .hero__inner{grid-template-columns:1fr; align-content:center; gap:34px}
+    .stack{max-width:none}
+    .slot{justify-self:center; width:min(420px,100%)}
+  }
+  @media (max-width:640px){
+    .nav{gap:12px}
+    .brand{font-size:0; gap:0}  /* icon only: room for the four course links */
+    .nav ul{gap:12px; min-width:0; overflow-x:auto; scrollbar-width:none; padding:4px 0 10px; margin-bottom:-14px}  /* room for the current-page underline */
+    .nav a{font-size:13px; white-space:nowrap}
+    .nav__stats{display:none}
+    .hero{min-height:auto; padding:0}
+    .hero__inner{padding:104px 18px 86px}
+    .slot{justify-self:stretch; width:100%}
+    .stats{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important; transition-duration:.01ms !important}
+  }
+</style>
+<noscript><style>
+  .nav,.copy,.chips,.stats,.stopwatch,.hero__scrim{
+    opacity:1 !important; transform:none !important; filter:none !important; pointer-events:auto !important;
+  }
+</style></noscript>
+</head>
+<body>
+
+<header class="hero" id="hero">
+  <nav class="nav">
+    <div class="brand"><i>▶</i>달리기</div>
+    <ul>
+      <li><a href="index.html">301번 버스</a></li>
+      <li><a href="zigzag.html">지그재그</a></li>
+      <li><a href="relay.html">이어달리기</a></li>
+      <li><a href="bread.html" aria-current="page">장애물</a></li>
+      <li class="nav__stats"><a href="#stats">기록</a></li>
+    </ul>
+  </nav>
+
+  <!-- layer 1: still hero image (becomes the timer's backdrop) -->
+  <div class="hero__still" role="img" aria-label="학교 운동장에서 책상 허들을 뛰어넘어 매점으로 달려가는 학생"></div>
+  <!-- layer 2: video, plays exactly once -->
+  <video class="hero__video hero__video--main" id="clip"
+         src="BREAD-RUN-INTRO.mp4"
+         preload="auto" muted playsinline disablepictureinpicture></video>
+  <!-- layer 3: result clips, shown when the run is stopped (within / past the target time) -->
+  <video class="hero__video hero__video--ok" id="okClip"
+         src="BREAD-RUN-A-GOT-IT.mp4"
+         preload="auto" muted playsinline disablepictureinpicture></video>
+  <video class="hero__video hero__video--fail" id="failClip"
+         src="BREAD-RUN-B-SOLD-OUT.mp4"
+         preload="auto" muted playsinline disablepictureinpicture></video>
+  <div class="hero__scrim"></div>
+
+  <div class="hero__inner">
+    <div class="stack">
+      <div class="copy">
+        <span class="eyebrow"><s></s>오늘의 체육수업 · 장애물 달리기</span>
+        <h1>종이 울렸다,<br><em>매점까지 전력 질주!</em></h1>
+        <p class="ask">장애물을 넘어 마지막 빵을 차지할 수 있을까?</p>
+        <p class="lede">매점까지 <b data-d>60</b>m, 허들 <b>4</b>개를 넘어야 합니다. 빵이 다 팔리기까지 <b data-t>15</b>초.<br>출발 신호에 맞춰 달려 허들을 넘고, 결승선을 통과하면 정지를 누르세요.</p>
+        <div class="chips">
+          <span>장애물 <b data-d>60</b>m</span>
+          <span>허들 <b>4</b>개</span>
+          <span>목표 <b data-t>15</b>초 이내</span>
+        </div>
+      </div>
+
+      <!-- replace the copy once the run is stopped -->
+      <div class="result result--ok" id="success">
+        <span class="result__tag">빵 획득</span>
+        <h1 class="result__title">성공</h1>
+        <p class="result__msg">목표보다 <b id="under">0.00</b>초 빨리 매점에 도착했습니다.</p>
+        <p class="result__sub">줄 맨 앞에서 갓 나온 빵을 손에 넣었어요! 같은 코스로 기록 단축에 다시 도전해 보세요.</p>
+        <button class="result__btn" id="retryOk" type="button">다시 도전</button>
+      </div>
+
+      <div class="result result--fail" id="fail">
+        <span class="result__tag">빵 품절</span>
+        <h1 class="result__title">실패</h1>
+        <p class="result__msg">목표 <b data-t>15</b>초를 <b id="over">0.00</b>초 넘겨 도착했습니다.</p>
+        <p class="result__sub">마지막 빵이 눈앞에서 팔렸어요. 허들 앞에서 속도를 줄이지 말고 같은 리듬으로 넘어 보세요. 같은 코스로 바로 다시 도전할 수 있습니다.</p>
+        <button class="result__btn" id="retry" type="button">다시 도전</button>
+      </div>
+    </div>
+
+    <!-- right / vertical center -->
+    <div class="slot">
+      <div class="stopwatch" id="sw" role="group" aria-label="러닝 타이머">
+        <div class="sw-head">
+          <div class="sw-label"><span class="sw-dot"></span>스탑워치</div>
+          <div class="sw-state" id="state">대기</div>
+        </div>
+
+        <div class="digits" id="digits" role="timer" aria-live="off">
+          <span id="mm">00</span><span class="sep">:</span><span id="ss">00</span><span class="cs" id="cs">.00</span>
+        </div>
+
+        <div class="track"><i id="bar"></i></div>
+        <p class="hint"><span>경과 시간</span><span id="total">0.00 초</span></p>
+
+        <div class="sw-btns">
+          <button class="btn-main" id="toggle" type="button">
+            <svg id="icoPlay" width="13" height="13" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2 1l8 5-8 5z"/></svg>
+            <span id="toggleText">시작</span>
+          </button>
+          <button class="btn-ghost" id="lap" type="button">랩</button>
+          <button class="btn-ghost" id="reset" type="button">리셋</button>
+        </div>
+
+        <ul class="laps" id="laps"></ul>
+      </div>
+    </div>
+  </div>
+
+  <button class="replay" id="replay" type="button" aria-label="인트로 영상 다시 재생">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    영상 다시 보기
+  </button>
+</header>
+
+<section class="stats" id="stats">
+  <div class="stat"><b>상태</b><strong id="sState">대기</strong></div>
+  <div class="stat"><b>경과</b><strong id="sTime">00:00.00</strong></div>
+  <div class="stat"><b>랩</b><strong id="sLaps">0<em>회</em></strong></div>
+</section>
+
+<script>
+(() => {
+  const hero   = document.getElementById('hero');
+  const clip   = document.getElementById('clip');
+  const sw     = document.getElementById('sw');
+  const mmEl   = document.getElementById('mm');
+  const ssEl   = document.getElementById('ss');
+  const csEl   = document.getElementById('cs');
+  const bar    = document.getElementById('bar');
+  const total  = document.getElementById('total');
+  const stateEl= document.getElementById('state');
+  const toggle = document.getElementById('toggle');
+  const toggleText = document.getElementById('toggleText');
+  const icoPlay = document.getElementById('icoPlay');
+  const lapBtn = document.getElementById('lap');
+  const resetBtn = document.getElementById('reset');
+  const lapsEl = document.getElementById('laps');
+  const replay = document.getElementById('replay');
+  const sState = document.getElementById('sState');
+  const sTime  = document.getElementById('sTime');
+  const sLaps  = document.getElementById('sLaps');
+  const failClip = document.getElementById('failClip');
+  const okClip = document.getElementById('okClip');
+  const underEl = document.getElementById('under');
+  const overEl = document.getElementById('over');
+  const track  = document.querySelector('.track');
+  const retry  = document.getElementById('retry');
+  const retryOk = document.getElementById('retryOk');
+
+  /* ================= VIDEO : play once, then reveal ================= */
+  const ICON_PLAY  = '<path d="M2 1l8 5-8 5z"/>';
+  const ICON_PAUSE = '<path d="M2 1h3v10H2zM7 1h3v10H7z"/>';
+  let revealed = false, safety = 0;
+
+  // safety net: never let the timer stay hidden if the clip stalls or never loads
+  function armSafety(ms){ clearTimeout(safety); safety = setTimeout(reveal, ms); }
+
+  function reveal(){
+    if (revealed) return;
+    revealed = true;
+    clearTimeout(safety);
+    hero.classList.remove('is-playing');
+    hero.classList.add('is-revealed');
+    document.body.classList.add('is-revealed');   // every word appears with the timer
+  }
+
+  function startClip(){
+    revealed = false;
+    resetAll();                                // the intro starts a fresh attempt
+    document.body.classList.remove('is-revealed');
+    hero.classList.remove('is-revealed');
+    hero.classList.add('is-playing');
+    clip.currentTime = 0;
+    armSafety(8000);                           // clip must start within 8s
+    const p = clip.play();
+    if (p && p.catch) p.catch(() => setTimeout(reveal, 900));
+  }
+
+  clip.addEventListener('ended', reveal);
+  clip.addEventListener('error', reveal);
+  clip.addEventListener('playing', () => {    // once rolling, allow the rest of the clip + slack
+    if (!revealed) armSafety(((clip.duration || 10) - clip.currentTime) * 1000 + 3000);
+  });
+
+  // plays on every page load (incl. back/forward cache restores)
+  function begin(){
+    if (reduced()) { revealed = false; reveal(); return; }   // motion-sensitive: skip the clip
+    startClip();
+  }
+
+  function reduced(){ return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  clip.muted = true;            // autoplay-safe
+  replay.addEventListener('click', startClip);
+
+  /* ================= STOPWATCH ================= */
+  const TARGET_MS = (parseFloat(document.querySelector('[data-t]').textContent) || 30) * 1000;
+  let running = false, result = '', base = 0, mark = 0, raf = 0, laps = [];
+
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const fmt = ms => {
+    const t   = Math.max(0, ms);
+    const m   = Math.floor(t / 60000);
+    const s   = Math.floor(t / 1000) % 60;
+    const cs  = Math.floor(t / 10) % 100;
+    return { m: pad(m), s: pad(s), cs: pad(cs), full: `${pad(m)}:${pad(s)}.${pad(cs)}` };
+  };
+
+  const elapsed = () => base + (running ? performance.now() - mark : 0);
+
+  function paint(){
+    const ms = elapsed();
+    const t  = fmt(ms);
+    mmEl.textContent = t.m;
+    ssEl.textContent = t.s;
+    csEl.textContent = '.' + t.cs;
+    sTime.textContent = t.full;
+
+    const left = TARGET_MS - ms;
+    total.textContent = left < 0
+      ? '+' + (-left / 1000).toFixed(2) + ' 초 초과'
+      : result === 'ok' ? (left / 1000).toFixed(2) + '초 일찍 도착'
+      : (ms === 0 ? '목표 ' + (TARGET_MS / 1000) + '초' : (left / 1000).toFixed(2) + '초 남음');
+
+    bar.style.width = Math.min(100, (ms / TARGET_MS) * 100) + '%';
+    track.classList.toggle('over', left < 0);
+
+    if (running) raf = requestAnimationFrame(paint);
+  }
+
+  // "정지" pressed: judge the run only now — within the target is a success, past it a fail
+  function finish(){
+    stop();
+    showResult(base > TARGET_MS ? 'fail' : 'ok');
+  }
+
+  function showResult(kind){
+    result = kind;
+    paint();
+    sync();
+    overEl.textContent  = ((base - TARGET_MS) / 1000).toFixed(2);
+    underEl.textContent = ((TARGET_MS - base) / 1000).toFixed(2);
+    document.body.classList.add(kind === 'ok' ? 'is-success' : 'is-failed');
+    const v = kind === 'ok' ? okClip : failClip;   // a course may have no result clip
+    if (!v) return;
+    v.currentTime = 0;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  function clearResult(){
+    if (!result) return;
+    result = '';
+    if (okClip) okClip.pause();
+    if (failClip) failClip.pause();
+    document.body.classList.remove('is-success', 'is-failed');
+  }
+
+  function sync(){
+    sw.classList.toggle('is-running', running);
+    sw.classList.toggle('is-failed', result === 'fail');
+    sw.classList.toggle('is-success', result === 'ok');
+    toggleText.textContent = result ? '다시 도전' : (running ? '정지' : '시작');
+    icoPlay.innerHTML = running ? ICON_PAUSE : ICON_PLAY;
+    stateEl.textContent = result === 'fail' ? '실패' : result === 'ok' ? '성공' : (running ? '러닝 중' : '대기');
+    sState.textContent = stateEl.textContent;
+    sState.style.color = result === 'fail' ? '#dc2626' : result === 'ok' ? '#12a150' : '';
+  }
+
+  function start(){
+    if (running) return;
+    clearResult();
+    mark = performance.now();
+    running = true;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(paint);
+    sync();
+  }
+
+  function stop(){
+    if (!running) return;
+    base = elapsed();
+    running = false;
+    cancelAnimationFrame(raf);
+    paint();
+    sync();
+  }
+
+  toggle.addEventListener('click', () => {
+    if (result) { resetAll(); return; }        // "다시 도전"
+    running ? finish() : start();
+  });
+
+  // "다시 도전": back to a ready (00:00.00) timer; the run starts on "시작"
+  retry.addEventListener('click', resetAll);
+  retryOk.addEventListener('click', resetAll);
+
+  function resetAll(){
+    clearResult();
+    running = false;
+    cancelAnimationFrame(raf);
+    base = 0; laps = [];
+    lapsEl.innerHTML = '';
+    sLaps.innerHTML = '0<em>회</em>';
+    paint();
+    sync();
+  }
+
+  lapBtn.addEventListener('click', () => {
+    const now = elapsed();
+    if (now < 100 || result) return;            // ignore accidental early taps
+    const prev = laps.length ? laps[laps.length - 1].total : 0;
+    laps.push({ split: now - prev, total: now });
+    lapsEl.innerHTML = '';
+    laps.slice().reverse().forEach((l, i) => {
+      const n = laps.length - i;
+      const li = document.createElement('li');
+      li.innerHTML = `<span>랩 ${n} · ${(l.split / 1000).toFixed(2)}초</span>${fmt(l.total).full}`;
+      lapsEl.prepend(li);
+    });
+    while (lapsEl.children.length > 5) lapsEl.lastElementChild.remove();
+    sLaps.innerHTML = laps.length + '<em>회</em>';
+  });
+
+  resetBtn.addEventListener('click', resetAll);
+
+  // Space toggles when the stopwatch has focus
+  sw.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target === sw) { e.preventDefault(); if (result) resetAll(); else running ? finish() : start(); }
+  });
+
+  paint();
+  sync();
+
+  begin();                      // after the stopwatch state exists (startClip reads it)
+  addEventListener('pageshow', e => { if (e.persisted) begin(); });
+})();
+</script>
+</body>
+</html>

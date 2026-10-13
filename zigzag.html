@@ -353,9 +353,11 @@
     .slot{justify-self:center; width:min(420px,100%)}
   }
   @media (max-width:640px){
-    .nav ul{gap:12px}
-    .nav a{font-size:13px}
-    .nav__stats{display:none}   /* room for the three course links */
+    .nav{gap:12px}
+    .brand{font-size:0; gap:0}  /* icon only: room for the four course links */
+    .nav ul{gap:12px; min-width:0; overflow-x:auto; scrollbar-width:none; padding:4px 0 10px; margin-bottom:-14px}  /* room for the current-page underline */
+    .nav a{font-size:13px; white-space:nowrap}
+    .nav__stats{display:none}
     .hero{min-height:auto; padding:0}
     .hero__inner{padding:104px 18px 86px}
     .slot{justify-self:stretch; width:100%}
@@ -380,6 +382,7 @@
       <li><a href="index.html">301번 버스</a></li>
       <li><a href="zigzag.html" aria-current="page">지그재그</a></li>
       <li><a href="relay.html">이어달리기</a></li>
+      <li><a href="bread.html">장애물</a></li>
       <li class="nav__stats"><a href="#stats">기록</a></li>
     </ul>
   </nav>

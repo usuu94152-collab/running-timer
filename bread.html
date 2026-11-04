@@ -680,10 +680,22 @@
 
   resetBtn.addEventListener('click', resetAll);
 
-  // Space toggles when the stopwatch has focus
-  sw.addEventListener('keydown', e => {
-    if (e.code === 'Space' && e.target === sw) { e.preventDefault(); if (result) resetAll(); else running ? finish() : start(); }
-  });
+  // Space (e.g. a buzzer mapped to the spacebar) works anywhere on the page:
+  // 시작 → 정지 → 다시 도전, the same as pressing the main button
+  const isSpace = e => e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar';
+  const typing  = el => el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+
+  addEventListener('keydown', e => {
+    if (!isSpace(e) || typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();                       // no page scroll, no click on a focused button
+    if (e.repeat || !revealed) return;        // held key / intro still playing: ignore
+    if (result) resetAll(); else running ? finish() : start();
+  }, true);
+
+  // a focused button would otherwise "click" on Space release and toggle twice
+  addEventListener('keyup', e => {
+    if (isSpace(e) && !typing(e.target)) e.preventDefault();
+  }, true);
 
   paint();
   sync();

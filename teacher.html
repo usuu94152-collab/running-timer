@@ -62,6 +62,14 @@
   .rec__btn{font-size:clamp(18px,2vw,22px); padding:20px 34px; border-radius:18px; min-width:220px}
   .rec__btn.start{background:var(--ok-solid); box-shadow:0 16px 30px -14px rgba(22,163,74,.9)}
   .rec__btn.stop{background:var(--bad-solid); box-shadow:0 16px 30px -14px rgba(220,38,38,.9)}
+  .class-dialog{width:calc(100% - 32px); max-width:420px; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:22px; padding:24px}
+  .class-dialog::backdrop{background:rgba(11,21,38,.55)}
+  .class-dialog h2{margin:0 0 12px; font-size:22px}
+  .class-dialog p{font-size:14px; line-height:1.6; color:var(--ink-soft)}
+  .class-dialog label{display:block; font-size:14px; font-weight:700; margin:18px 0 8px}
+  .class-dialog select{width:100%}
+  .class-dialog .actions{display:flex; justify-content:flex-end; gap:8px; margin-top:20px}
+  .class-dialog .err{color:var(--bad); margin-bottom:0}
 
   .grid{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:16px}
   .grid > .card{margin-top:16px}
@@ -191,6 +199,19 @@
     </section>
   </div>
 </main>
+<dialog id="classDialog" class="class-dialog" aria-labelledby="classTitle" aria-describedby="classHelp">
+  <form id="classForm">
+    <h2 id="classTitle">수업할 반 선택</h2>
+    <p id="classHelp">선택한 반 학생의 기록만 저장합니다.<br>다른 반 학생은 저장 없이 연습할 수 있어요.</p>
+    <label for="recordClass">수업하는 반</label>
+    <select id="recordClass" required><option value="">반을 선택해 주세요</option></select>
+    <p id="classError" class="err" role="alert" hidden></p>
+    <div class="actions">
+      <button type="button" class="ghost" id="classCancel">취소</button>
+      <button type="submit" id="classStart">이 반 기록 시작</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="sheet-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -205,7 +226,7 @@
   const store = { get(){ try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch (_) { return ''; } },
                   set(v){ try { v ? sessionStorage.setItem(TOKEN_KEY, v) : sessionStorage.removeItem(TOKEN_KEY); } catch (_) {} } };
 
-  let mode = '', token = store.get(), data = null, poll = 0, shown = 40, qrFor = '';
+  let mode = '', token = store.get(), data = null, poll = 0, shown = 40, qrFor = '', displayedClass = '', starting = false;
 
   async function call(body){
     const res = await fetch(API, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' });
@@ -235,6 +256,7 @@
 
   function showLogin(){
     clearTimeout(poll);
+    $('classDialog').close();
     $('app').hidden = true; $('logout').hidden = true;
     $('login').hidden = false;
     setTimeout(() => $('pw').focus(), 50);
@@ -287,12 +309,19 @@
     paintRecent();
     paintEval();
     paintBest();
+    const activeClass = d.recording ? d.classKey || '' : '';
+    if (activeClass && activeClass !== displayedClass) {
+      $('cls').value = activeClass;
+      $('ecls').value = activeClass;
+      shown = 40; paintBest(); paintEval();
+    }
+    displayedClass = activeClass;
   }
 
   function paintRec(){
     const on = !!(data && data.recording);
     $('rec').classList.toggle('is-on', on);
-    $('recTitle').textContent = on ? '기록 중' : '기록 대기';
+    $('recTitle').textContent = on ? (data.classKey ? className(data.classKey) + ' · ' : '') + '기록 중' : '기록 대기';
     if (on) {
       const s = Math.max(0, Math.floor((Date.now() - data.since) / 1000));
       $('recSub').textContent = `시작 ${new Date(data.since).toTimeString().slice(0, 5)} · ${two(Math.floor(s / 60))}:${two(s % 60)} 지남 · 학생들이 측정한 기록이 저장되고 있어요`;
@@ -306,13 +335,52 @@
 
   $('recBtn').addEventListener('click', async () => {
     const on = data && data.recording;
+    if (!on) {
+      if (!data.classSelection) {
+        notice('반별 기록 저장을 사용하려면 Apps Script를 새 버전으로 배포해 주세요. 로컬 서버는 최신 코드로 다시 실행해 주세요.');
+        return;
+      }
+      const classes = [...new Set((data.best || []).map(classOf))].filter(Boolean);
+      $('recordClass').innerHTML = '<option value="">반을 선택해 주세요</option>' + classes.map(c => `<option value="${esc(c)}">${esc(className(c))}</option>`).join('');
+      $('recordClass').value = classes.includes($('cls').value) ? $('cls').value : '';
+      $('classError').hidden = !!classes.length;
+      $('classError').textContent = classes.length ? '' : '학생명단에 학년과 반을 먼저 입력해 주세요.';
+      $('classStart').disabled = !classes.length;
+      $('classDialog').showModal();
+      return;
+    }
     if (on && !confirm('기록을 종료할까요? 이후에 측정한 기록은 저장되지 않아요.')) return;
     $('recBtn').disabled = true;
     try {
-      const d = await op(on ? 'stop' : 'start');
+      const d = await op('stop');
       d.ok ? render(d) : notice(d.error);
     } catch (_) { notice('서버에 연결할 수 없어요. 다시 눌러 주세요.'); }
     finally { $('recBtn').disabled = false; }
+  });
+
+  $('classCancel').addEventListener('click', () => $('classDialog').close());
+  $('classDialog').addEventListener('cancel', e => { if (starting) e.preventDefault(); });
+  $('classForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (starting || !$('recordClass').value) return;
+    starting = true;
+    ['classStart', 'classCancel', 'recordClass', 'recBtn'].forEach(id => { $(id).disabled = true; });
+    $('classError').hidden = true;
+    try {
+      const d = await op('start', { classKey: $('recordClass').value });
+      if (d.ok && d.recording && d.classKey === $('recordClass').value) {
+        $('classDialog').close(); notice(''); render(d);
+      } else {
+        $('classError').textContent = d.error || '반 선택을 적용하지 못했어요. 서버를 최신 버전으로 업데이트해 주세요.';
+        $('classError').hidden = false;
+      }
+    } catch (_) {
+      $('classError').textContent = '서버에 연결할 수 없어요. 다시 시도해 주세요.';
+      $('classError').hidden = false;
+    } finally {
+      starting = false;
+      ['classStart', 'classCancel', 'recordClass', 'recBtn'].forEach(id => { $(id).disabled = false; });
+    }
   });
 
   function paintLocal(d){
@@ -351,6 +419,10 @@
   }
 
   function classOf(b){ return [b.grade, b.cls].filter(Boolean).join('-'); }
+  function className(key){
+    const b = (data.best || []).find(x => classOf(x) === key);
+    return b ? [b.grade && b.grade + '학년', b.cls && b.cls + '반'].filter(Boolean).join(' ') : key + '반';
+  }
 
   function fillClasses(sel, list){
     const classes = [...new Set(list.map(classOf))].filter(Boolean);

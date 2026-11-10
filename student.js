@@ -5,7 +5,7 @@
  * - 한 기기(크롬북)에 여러 학생이 미리 로그인해 두고, 수업 때는 이름 버튼만 눌러 바로 측정
  *   (로그인은 이 기기에 남아 다음 수업에도 그대로. [편집]으로 학생을 뺄 수 있음)
  * - 선생님이 [기록 시작]을 누른 동안만 저장 (선생님 페이지 teacher.html)
- * - 평가기준 탭의 "평가 코스"가 정해지면 그 코스만 열림 (다른 코스 페이지는 그 코스로 이동)
+ * - 평가 코스와 관계없이 모든 코스를 탭으로 선택할 수 있음 (평가는 설정된 코스만 집계)
  * - 스톱워치 위에 이번 기록 시간의 연습 횟수와 우수기록 합산 표시 (등급은 보여 주지 않음)
  * - 정지를 누르면(코스 페이지가 보내는 'run:finish' 이벤트) 기록을 저장
  * - 인터넷이 끊겨도 기록은 이 브라우저에 보관했다가 연결되면 다시 보냄
@@ -20,7 +20,6 @@
   const API = String(window.RUNNING_SHEET_URL || '').trim();
   const DEVICE_KEY = 'running-timer-device';         // 이 기기에 로그인한 학생들 { students, active }
   const QUEUE_KEY = 'running-timer-queue';
-  const COURSE_KEY = 'running-timer-course';         // 선생님이 정한 평가 코스 (예: "장애물")
   const MAX_STUDENTS = 8;
 
   const storage = kind => { try { return window[kind]; } catch (_) { return null; } };
@@ -39,17 +38,6 @@
   const current = document.querySelector('.nav ul a[aria-current]');
   const COURSE = current ? current.textContent.trim() : document.title;
 
-  // 평가 코스만 열기: 다른 코스 페이지면 그 코스로 이동하고, 메뉴에서 다른 코스를 숨김
-  function lockCourse(name){
-    if (!API) return false;
-    keep(L, COURSE_KEY, name || null);
-    const target = name && courseLinks.find(a => a.textContent.trim() === name);
-    courseLinks.forEach(a => { const li = a.closest('li'); if (li) li.hidden = !!target && a !== target; });
-    if (target && target !== current) { location.replace(target.getAttribute('href')); return true; }
-    return false;
-  }
-  if (lockCourse(load(L, COURSE_KEY))) return;       // 영상이 시작되기 전에 바로 이동
-
   const device = (API && load(L, DEVICE_KEY)) || {};
   let crew = (device.students || []).filter(x => x && x.token && x.name);   // [{ name, label, token }]
   let student = crew.find(x => x.token === device.active) || crew[0] || null;
@@ -60,6 +48,12 @@
   let adding = false;                                 // 학생이 있는데 [＋ 학생]으로 로그인 창을 연 상태
   let editing = false;                                // 이름 버튼에 빼기(×) 표시
   let recording = null;                               // 선생님 기록 시간: true / false / null(모름)
+  let recordingClass = '', recordingSince = null;
+  const otherClass = () => !!(recording && recordingClass && student && student.classKey && student.classKey !== recordingClass);
+  const classText = () => {
+    const parts = recordingClass.split('-');
+    return parts.length === 2 ? `${parts[0]}학년 ${parts[1]}반` : `${recordingClass}반`;
+  };
   const saveDevice = () => keep(L, DEVICE_KEY, { students: crew, active: student ? student.token : null });
 
   /* ================= 서버 호출 ================= */
@@ -223,7 +217,7 @@
       `${esc(x.name)}${dup(x.name) ? `<small>${esc(short(x.label))}</small>` : ''}${editing ? '<i aria-label="빼기">×</i>' : ''}</button>`).join('');
     // 이번 기록 시간의 연습 횟수 · 우수기록 합산
     const pr = records && records.practice;
-    const showToday = !!(student && pr && pr.open && recording !== false && (!pr.course || pr.course === COURSE));
+    const showToday = !!(student && pr && pr.open && recording !== false && !otherClass() && (!pr.course || pr.course === COURSE));
     crewToday.hidden = !showToday;
     if (showToday) {
       const left = pr.topN - pr.count;
@@ -232,7 +226,7 @@
         : ` · ${left}회 더 뛰면 우수 ${pr.topN}개 합산이 나와요`);
     }
     recBadge.className = 'crew__rec' + (recording ? ' is-on' : recording === false ? ' is-off' : '');
-    recBadge.textContent = recording ? '기록 중' : recording === false ? '기록 대기 · 선생님이 시작하면 저장돼요' : `이 기기 학생 ${crew.length}명`;
+    recBadge.textContent = recording ? (recordingClass ? classText() + ' 기록 중' + (otherClass() ? ' · 나는 연습만 가능' : '') : '기록 중') : recording === false ? '기록 대기 · 선생님이 시작하면 저장돼요' : `이 기기 학생 ${crew.length}명`;
 
     const q = queue().length;
     if (!API || practice) setSave('off', '');
@@ -251,9 +245,8 @@
     mine.querySelector('#mineCount').textContent = `총 ${records.count || 0}회 측정`;
 
     const best = records.best || {};
-    const locked = API && load(L, COURSE_KEY);
-    const names = locked ? [locked] : courseLinks.map(a => a.textContent.trim());
-    if (!locked) Object.keys(best).forEach(c => { if (names.indexOf(c) < 0) names.push(c); });
+    const names = courseLinks.map(a => a.textContent.trim());
+    Object.keys(best).forEach(c => { if (names.indexOf(c) < 0) names.push(c); });
     mine.querySelector('#mineBest').innerHTML = names.map(c => {
       const b = best[c];
       const link = courseLinks.find(a => a.textContent.trim() === c);
@@ -323,6 +316,7 @@
   function loadRecords(x){
     call('records', { token: x.token }).then(j => {
       if (j && j.ok) {
+        if (j.student) { Object.assign(x, j.student); saveDevice(); }
         recCache[x.token] = j.records;
         if (student && student.token === x.token) { records = j.records; paint(); }
       } else if (j && j.relogin) {
@@ -332,7 +326,7 @@
   }
 
   function signedIn(j){
-    const me = { name: j.student.name, label: j.student.label || '', token: j.token };
+    const me = { name: j.student.name, label: j.student.label || '', classKey: j.student.classKey || '', token: j.token };
     const same = x => x.name === me.name && x.label === me.label;
     const was = crew.findIndex(same);
     if (was >= 0) crew[was] = me; else crew.push(me);
@@ -429,6 +423,7 @@
   document.addEventListener('run:finish', e => {
     if (!API || !student) return;
     if (recording === false) { setSave('closed', '기록 시간이 아니라 저장하지 않았어요 (연습)'); return; }
+    if (otherClass()) { setSave('class', `지금은 ${classText()} 수업이에요. 저장 없이 연습했어요.`); return; }
     const d = e.detail || {};
     const rec = {
       id: uid(), at: Date.now(), token: student.token,
@@ -490,14 +485,14 @@
     if (!API) return;
     try {
       const j = await call('status', {});
-      if (j && j.ok && 'course' in j && (j.course || null) !== (load(L, COURSE_KEY) || null)) {
-        if (lockCourse(j.course)) return;
-        paint();
-      }
-      if (j && j.ok && typeof j.recording === 'boolean' && j.recording !== recording) {
+      if (j && j.ok && typeof j.recording === 'boolean') {
+        const changed = j.recording !== recording || (j.classKey || '') !== recordingClass || j.since !== recordingSince;
         recording = j.recording;
+        recordingClass = j.classKey || '';
+        recordingSince = j.since;
         if (save.dataset.kind === 'closed' && recording) save.dataset.kind = '';
-        if (recording && student) loadRecords(student);
+        if (changed && save.dataset.kind === 'class') save.dataset.kind = '';
+        if (changed && recording && student) loadRecords(student);
         paint();
       }
     } catch (_) {}

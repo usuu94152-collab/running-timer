@@ -93,6 +93,10 @@ def student_key(s):
     return '|'.join((s['grade'], s['cls'], s['num'], s['name']))
 
 
+def class_key(s):
+    return '-'.join(x for x in (s['grade'], s['cls']) if x)
+
+
 def make_hash(pw):
     salt = secrets.token_hex(8)
     return salt + '$' + hashlib.sha256((salt + pw).encode('utf-8')).hexdigest()
@@ -205,29 +209,44 @@ class Store:
         tmp.write_text(json.dumps(st), 'utf-8')
         os.replace(tmp, self.state_path)
 
-    def start_rec(self):
+    def start_rec(self, selected_class):
         st = self._state()
+        if not selected_class or not any(class_key(s) == selected_class for s in self.roster()):
+            raise RosterError('수업할 반을 학생명단에서 선택해 주세요.')
+        if st.get('open') and st.get('classKey') != selected_class:
+            raise RosterError('이미 기록 중이에요. 기록 종료 후 다른 반을 선택해 주세요.')
         if not st.get('open'):
-            st.update(open=True, start=time.time())
+            st.update(open=True, start=time.time(), classKey=selected_class)
             self._set_state(st)
 
     def stop_rec(self):
         st = self._state()
         if st.get('open'):
-            st['sessions'] = (st.get('sessions') or [])[-19:] + [{'start': st['start'], 'end': time.time()}]
+            st['sessions'] = (st.get('sessions') or [])[-19:] + [{'start': st['start'], 'end': time.time(), 'classKey': st.get('classKey', '')}]
             st['open'] = False
             self._set_state(st)
 
     def in_session(self, at):
         """지금 기록 중이거나, 측정 시각이 지난 기록 시간 안이면(와이파이가 끊겨 늦게 도착한 기록) 받는다"""
+        return self.session_at(at) is not None
+
+    def session_at(self, at):
         st = self._state()
-        if st.get('open') and at >= st['start'] - SLACK:
-            return True
-        return any(x['start'] - SLACK <= at <= x['end'] + SLACK for x in st.get('sessions') or [])
+        sessions = list(reversed(st.get('sessions') or []))
+        current = {'start': st['start'], 'classKey': st.get('classKey', '')} if st.get('open') else None
+        if current and at >= current['start']:
+            return current
+        exact = next((x for x in sessions if x['start'] <= at <= x['end']), None)
+        if exact:
+            return exact
+        if current and at >= current['start'] - SLACK:
+            return current
+        return next((x for x in sessions if x['start'] - SLACK <= at <= x['end'] + SLACK), None)
 
     def status(self):
         st = self._state()
         return {'ok': True, 'recording': bool(st.get('open')),
+                'classKey': st.get('classKey', '') if st.get('open') else '',
                 'since': int(st['start'] * 1000) if st.get('open') else None}
 
     def _secret(self):
@@ -324,7 +343,7 @@ class Store:
         return s if s and hmac.compare_digest(self.sign(s), sig) else None
 
     def info(self, s):
-        return {'name': s['name'], 'label': label(s)}
+        return {'name': s['name'], 'label': label(s), 'classKey': class_key(s)}
 
     def login(self, p):
         name, pw = norm_name(p.get('name')), str(p.get('password') or '').strip()
@@ -449,9 +468,13 @@ class Store:
             when = now
         if when > now or (now - when).days > 30:
             when = now
-        if not self.in_session(when.timestamp()):
+        session = self.session_at(when.timestamp())
+        if not session:
             return {'ok': False, 'closed': True,
                     'error': '기록 시간이 아니라 저장하지 않았어요. 선생님이 [기록 시작]을 누르면 저장돼요.'}
+        if not session.get('classKey') or session['classKey'] != class_key(st):
+            return {'ok': False, 'classMismatch': True,
+                    'error': '수업하는 반의 기록만 저장할 수 있어요. 다른 반은 연습만 가능해요.'}
 
         rec = {'id': rid, 'at': when.isoformat(timespec='seconds'), 'name': st['name'],
                'grade': st['grade'], 'cls': st['cls'], 'num': st['num'], 'course': course, 'sec': sec,
@@ -597,10 +620,11 @@ class Store:
         last = (st.get('sessions') or [None])[-1]
         since = st['start'] if st.get('open') else (last['start'] if last else 0)
         until = float('inf') if st.get('open') or not last else last['end'] + SLACK
+        session_class = st.get('classKey') if st.get('open') else (last.get('classKey') if last else None)
         recent = []
         for r in reversed(self.records):
             t = dt.datetime.fromisoformat(r['at']).timestamp()
-            if since - SLACK <= t <= until:
+            if since - SLACK <= t <= until and (not session_class or class_key(r) == session_class):
                 recent.append({'id': r['id'], 'at': r['at'][11:19], 'who': label(r), 'name': r['name'],
                                'course': r['course'], 'sec': r['sec'], 'result': r['result'],
                                'excluded': r['id'] in self.excluded})
@@ -611,7 +635,8 @@ class Store:
             roster_error = ''
         except RosterError as e:
             roster_error = str(e)
-        return {'ok': True, 'mode': 'local', 'recording': bool(st.get('open')),
+        return {'ok': True, 'mode': 'local', 'classSelection': True, 'recording': bool(st.get('open')),
+                'classKey': st.get('classKey', '') if st.get('open') else '',
                 'since': int(st['start'] * 1000) if st.get('open') else None,
                 'lastSession': {'start': int(last['start'] * 1000), 'end': int(last['end'] * 1000)} if last else None,
                 'courses': courses, 'best': best, 'recent': recent, 'total': len(self.active()),
@@ -647,7 +672,7 @@ class Store:
                     return self.set_password(p)
                 if action == 'records':
                     st = self.from_token(p.get('token'))
-                    return ({'ok': True, 'records': self.summary(st)} if st
+                    return ({'ok': True, 'student': self.info(st), 'records': self.summary(st)} if st
                             else {'ok': False, 'relogin': True, 'error': MSG_RELOGIN})
                 if action == 'save':
                     return self.save(p)
@@ -661,7 +686,7 @@ class Store:
                         return {'ok': True, 'token': 'local'}
                     op = p.get('op')
                     if op == 'start':
-                        self.start_rec()
+                        self.start_rec(str(p.get('classKey') or ''))
                     elif op == 'stop':
                         self.stop_rec()
                     elif op == 'exclude':

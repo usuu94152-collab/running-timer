@@ -39,7 +39,7 @@ const AUTO_SHEETS = [RECORD_SHEET, BEST_SHEET, CRITERIA_SHEET, EVAL_SHEET];
 // 평가기준 탭의 처음 내용 (합산 초 기준은 예시: 학교 기준에 맞게 바꿔서 쓰기)
 const DEFAULT_CRITERIA = [
   ['항목', '남', '여', '설명'],
-  ['평가 코스', '장애물', '', '이 코스 기록만 평가하고, 학생 화면도 이 코스만 열려요. 비우면 모든 코스'],
+  ['평가 코스', '장애물', '', '이 코스 기록만 평가해요. 학생은 모든 코스를 선택할 수 있어요. 비우면 모든 코스를 평가'],
   ['무효 기록(초 미만)', 5, '', '이보다 짧은 기록(실수로 바로 정지)은 연습 횟수와 우수기록에서 빼요'],
   ['우수기록 개수', 3, '', '빠른 기록 몇 개를 합산할지'],
   ['연습 A (회 이상)', 5, '', '한 기록 시간(기록 시작~종료) 안의 연습 횟수'],
@@ -157,7 +157,7 @@ function setPassword_(p) {
 function records_(p) {
   const s = fromToken_(p.token);
   if (!s) return { ok: false, relogin: true, error: MSG_RELOGIN };
-  return { ok: true, records: summary_(s) };
+  return { ok: true, student: info_(s), records: summary_(s) };
 }
 
 function save_(p) {
@@ -179,17 +179,17 @@ function save_(p) {
   let when = new Date(Number(p.at));
   const now = new Date();
   if (isNaN(when.getTime()) || when > now || now - when > 30 * 864e5) when = now;
-  if (!inSession_(when.getTime())) {
-    return { ok: false, closed: true, error: '기록 시간이 아니라 저장하지 않았어요. 선생님이 [기록 시작]을 누르면 저장돼요.' };
-  }
-
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sh = recordSheet_();
     if (id && isDuplicate_(sh, id)) return { ok: true, duplicate: true, records: summary_(s) };
-    const session = sessionOf_(when.getTime());
-    sh.appendRow([when, s.grade, s.cls, s.num, s.name, course, sec, target, result, laps, id, '', session ? new Date(session) : '']);
+    const session = sessionAt_(when.getTime());
+    if (!session) return { ok: false, closed: true, error: '기록 시간이 아니라 저장하지 않았어요. 선생님이 [기록 시작]을 누르면 저장돼요.' };
+    if (!session.classKey || session.classKey !== classKey_(s)) {
+      return { ok: false, classMismatch: true, error: '수업하는 반의 기록만 저장할 수 있어요. 다른 반은 연습만 가능해요.' };
+    }
+    sh.appendRow([when, s.grade, s.cls, s.num, s.name, course, sec, target, result, laps, id, '', new Date(session.start)]);
     sh.getRange(sh.getLastRow(), 7).setNumberFormat('0.00');
     rebuildBest_();
     rebuildEval_();
@@ -251,7 +251,8 @@ function passCol_(r) {
   return col;
 }
 
-function info_(s) { return { name: s.name, label: label_(s) }; }
+function classKey_(s) { return [s.grade, s.cls].filter(Boolean).join('-'); }
+function info_(s) { return { name: s.name, label: label_(s), classKey: classKey_(s) }; }
 
 function label_(s) {
   return [s.grade && s.grade + '학년', s.cls && s.cls + '반', s.num && s.num + '번'].filter(Boolean).join(' ');
@@ -321,9 +322,10 @@ function recordRows_(withExcluded) {
 // 한 학생의 기록 요약: 코스별 최고 기록 + 최근 10회
 function summary_(s) {
   const tz = tz_();
+  const cfg = criteria_();
   const mine = recordRows_().filter(r => r.key === s.key);
   const best = {};
-  mine.forEach(r => {
+  mine.filter(r => r.sec >= cfg.minSec).forEach(r => {
     const b = best[r.course];
     if (!b || r.sec < b.sec) best[r.course] = { sec: r.sec, result: r.result, target: r.target };
   });
@@ -331,12 +333,12 @@ function summary_(s) {
     at: r.at ? Utilities.formatDate(r.at, tz, 'M/d HH:mm') : '',
     course: r.course, sec: r.sec, result: r.result
   }));
-  return { count: mine.length, best: best, recent: recent, practice: practice_(s, mine) };
+  return { count: mine.length, best: best, recent: recent, practice: practice_(s, mine, cfg) };
 }
 
 // 학생 화면용: 지금(또는 마지막) 기록 시간의 평가 코스 연습 횟수와 우수기록 합산 (등급은 보여 주지 않음)
-function practice_(s, mine) {
-  const cfg = criteria_();
+function practice_(s, mine, cfg) {
+  cfg = cfg || criteria_();
   const st = state_();
   const valid = mine.filter(x => (!cfg.course || x.course === cfg.course) && x.sec >= cfg.minSec);
   let session = st.open ? st.start : 0;
@@ -357,6 +359,7 @@ function practice_(s, mine) {
 
 // 학생 × 코스별 최고 기록 (명단 순서, 아직 안 뛴 학생도 포함)
 function bestData_(r, rows) {
+  const cfg = criteria_();
   const courses = COURSES.slice();
   rows.forEach(x => { if (courses.indexOf(x.course) < 0) courses.push(x.course); });
   const stats = {};
@@ -364,7 +367,7 @@ function bestData_(r, rows) {
     const s = stats[x.key] || (stats[x.key] = { best: {}, count: 0, last: null });
     s.count++;
     if (x.at && (!s.last || x.at > s.last)) s.last = x.at;
-    if (!(x.course in s.best) || x.sec < s.best[x.course]) s.best[x.course] = x.sec;
+    if (x.sec >= cfg.minSec && (!(x.course in s.best) || x.sec < s.best[x.course])) s.best[x.course] = x.sec;
   });
   const list = r.list.map(st => {
     const s = stats[st.key] || { best: {}, count: 0, last: null };
@@ -405,16 +408,18 @@ function state_() {
 
 function setState_(s) { PropertiesService.getScriptProperties().setProperty('REC_STATE', JSON.stringify(s)); }
 
-function startRec_() {
+function startRec_(classKey) {
   const s = state_();
-  if (!s.open) { s.open = true; s.start = Date.now(); setState_(s); }
+  if (!classKey || !roster_().list.some(x => classKey_(x) === classKey)) throw new Error('수업할 반을 학생명단에서 선택해 주세요.');
+  if (s.open && s.classKey !== classKey) throw new Error('이미 기록 중이에요. 기록 종료 후 다른 반을 선택해 주세요.');
+  if (!s.open) { s.open = true; s.start = Date.now(); s.classKey = classKey; setState_(s); }
   return s;
 }
 
 function stopRec_() {
   const s = state_();
   if (s.open) {
-    s.sessions = (s.sessions || []).concat([{ start: s.start, end: Date.now() }]).slice(-100);
+    s.sessions = (s.sessions || []).concat([{ start: s.start, end: Date.now(), classKey: s.classKey || '' }]).slice(-100);
     s.open = false;
     setState_(s);
   }
@@ -423,22 +428,29 @@ function stopRec_() {
 
 // 받아도 되는 기록인지: 지금 기록 중이거나, 측정 시각이 지난 기록 시간 안이면(와이파이가 끊겨 늦게 도착한 기록)
 function inSession_(at) {
-  const s = state_(), slack = 5000;   // 기기·서버 시계 차이만큼만 허용
-  if (s.open && at >= s.start - slack) return true;
-  return (s.sessions || []).some(x => at >= x.start - slack && at <= x.end + slack);
+  return !!sessionAt_(at);
 }
 
 function statusOut_() {
   const s = state_();
-  return { recording: !!s.open, since: s.open ? s.start : null };
+  return { recording: !!s.open, since: s.open ? s.start : null, classKey: s.open ? s.classKey || '' : '' };
+}
+
+// 실제 수업 시간에 속하는 기록을 우선하고, 해당하지 않을 때만 기기 시계 차이를 허용한다.
+function sessionAt_(at, st) {
+  const s = st || state_(), slack = 5000;
+  const sessions = (s.sessions || []).slice().reverse();
+  const current = s.open ? { start: s.start, classKey: s.classKey || '' } : null;
+  if (current && at >= current.start) return current;
+  const exact = sessions.find(x => at >= x.start && at <= x.end);
+  if (exact) return exact;
+  if (current && at >= current.start - slack) return current;
+  return sessions.find(x => at >= x.start - slack && at <= x.end + slack) || null;
 }
 
 // 이 시각이 속한 기록 시간의 시작 시각 (없으면 0)
 function sessionOf_(at, st) {
-  st = st || state_();
-  const slack = 5000;
-  if (st.open && at >= st.start - slack) return st.start;
-  const hit = (st.sessions || []).filter(x => at >= x.start - slack && at <= x.end + slack).pop();
+  const hit = sessionAt_(at, st);
   return hit ? hit.start : 0;
 }
 
@@ -556,7 +568,7 @@ function teacher_(p) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    if (p.op === 'start') startRec_();
+    if (p.op === 'start') startRec_(String(p.classKey || ''));
     else if (p.op === 'stop') stopRec_();
     else if (p.op === 'resetPassword') resetKey_(String(p.key || ''));
     else if (p.op === 'exclude') setExcluded_(String(p.id || ''), !!p.on);
@@ -575,7 +587,9 @@ function board_() {
   const last = (st.sessions || []).slice(-1)[0];
   const since = st.open ? st.start : (last ? last.start : 0);
   const until = st.open ? Infinity : (last ? last.end + 5000 : Infinity);
-  const recent = all.filter(x => x.at && x.at.getTime() >= since - 5000 && x.at.getTime() <= until)
+  const sessionClass = st.open ? st.classKey : last && last.classKey;
+  const recent = all.filter(x => x.at && x.at.getTime() >= since - 5000 && x.at.getTime() <= until &&
+                                (!sessionClass || classKey_(x) === sessionClass))
     .slice(-300).reverse().map(x => ({
       id: x.id, at: Utilities.formatDate(x.at, tz, 'HH:mm:ss'), who: label_(x), name: x.name,
       course: x.course, sec: x.sec, result: x.result, excluded: x.excluded
@@ -586,7 +600,7 @@ function board_() {
     evaluation: { course: cfg.course, minSec: cfg.minSec, topN: cfg.topN, practice: cfg.practice, cut: cfg.cut,
                   list: evaluate_(r, all, cfg).map(e => Object.assign(e, {
                     session: e.session ? Utilities.formatDate(new Date(e.session), tz, 'M/d HH:mm') : '' })) },
-    ok: true, mode: 'sheet', recording: !!st.open, since: st.open ? st.start : null,
+    ok: true, mode: 'sheet', classSelection: true, recording: !!st.open, since: st.open ? st.start : null, classKey: st.open ? st.classKey || '' : '',
     lastSession: last || null, courses: d.courses,
     best: d.list.map(b => ({ grade: b.grade, cls: b.cls, num: b.num, name: b.name, key: b.key,
                              hasPassword: b.hasPassword, best: b.best, count: b.count })),
@@ -686,12 +700,22 @@ function setTeacherPassword() {
 }
 
 function startRecording() {
-  startRec_();
+  const ui = SpreadsheetApp.getUi();
+  const classes = [...new Set(roster_().list.map(classKey_))].filter(Boolean);
+  const answer = ui.prompt('수업할 반 선택', '수업할 반을 입력하세요 (학년-반): ' + classes.join(', '), ui.ButtonSet.OK_CANCEL);
+  if (answer.getSelectedButton() !== ui.Button.OK) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { startRec_(answer.getResponseText().trim()); }
+  catch (err) { ui.alert(err.message); return; }
+  finally { lock.releaseLock(); }
   SpreadsheetApp.getActive().toast('지금부터 측정한 기록이 저장돼요.', '기록 시작', 5);
 }
 
 function stopRecording() {
-  stopRec_();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { stopRec_(); } finally { lock.releaseLock(); }
   SpreadsheetApp.getActive().toast('이제 측정해도 기록이 저장되지 않아요.', '기록 종료', 5);
 }
 

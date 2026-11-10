@@ -1,4 +1,4 @@
-/* 학생 로그인 + 기록 저장 (구글 시트 연결)
+/* 학생 로그인 + 기록 저장 (구글 시트 또는 선생님 컴퓨터의 로컬 서버)
  *
  * - 이름 + 생년월일로 로그인 (학생명단 시트와 대조)
  * - 정지를 누르면(코스 페이지가 보내는 'run:finish' 이벤트) 기록을 시트에 저장
@@ -64,7 +64,7 @@
     <form class="gate__card" id="gateForm" autocomplete="off" novalidate>
       <span class="gate__tag">${esc(COURSE)}</span>
       <h2 class="gate__title">학생 로그인</h2>
-      <p class="gate__sub">이름과 생년월일을 입력하면<br>측정한 기록이 학급 시트에 저장돼요.</p>
+      <p class="gate__sub">이름과 생년월일을 입력하면<br>측정한 기록이 선생님 기록부에 저장돼요.</p>
       <label class="gate__field"><span>이름</span>
         <input id="gateName" name="name" type="text" placeholder="홍길동" maxlength="20" required></label>
       <label class="gate__field"><span>생년월일</span>
@@ -137,7 +137,7 @@
     } else if (practice) {
       whoAva.textContent = '!';
       whoName.textContent = '연습 모드';
-      whoSub.textContent = '시트에 연결되지 않아 기록이 저장되지 않아요';
+      whoSub.textContent = '기록 서버에 연결되지 않아 저장되지 않아요';
       whoBtn.hidden = false;
       whoBtn.textContent = '로그인';
     } else if (student) {
@@ -152,7 +152,7 @@
     const q = queue().length;
     if (!API || practice) setSave('off', '');
     else if (q && !flushing) setSave('wait', `저장 대기 ${q}건 · 인터넷 연결을 확인하세요`);
-    else if (!save.dataset.kind || save.dataset.kind === 'off') setSave('idle', '정지를 누르면 기록이 시트에 자동 저장돼요');
+    else if (!save.dataset.kind || save.dataset.kind === 'off') setSave('idle', '정지를 누르면 기록이 자동 저장돼요');
 
     paintRecords();
   }
@@ -212,7 +212,7 @@
       if (document.activeElement) document.activeElement.blur();
       flush();
     } catch (_) {
-      errEl.textContent = '시트에 연결할 수 없어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+      errEl.textContent = '기록 서버에 연결할 수 없어요. 와이파이·인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
       practiceBtn.hidden = false;
     } finally {
       btn.disabled = false; btn.textContent = '로그인';
@@ -271,7 +271,7 @@
     flushing = false;
     if (failed) setSave('wait', `저장 대기 ${q.length}건 · 인터넷 연결을 확인하세요`);
     else if (rejected) setSave('error', rejected);
-    else if (lastSaved) setSave('ok', `✓ ${lastSaved.course} ${secText(lastSaved.sec)}초 · 시트에 저장됨`);
+    else if (lastSaved) setSave('ok', `✓ ${lastSaved.course} ${secText(lastSaved.sec)}초 · 저장됨`);
     paint();
   }
 

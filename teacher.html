@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>선생님 관리 · 러닝 타이머</title>
+<style>
+  :root{
+    --ink:#0b1526; --ink-soft:#5b6b86; --line:rgba(11,21,38,.10);
+    --bg:#eef2f7; --card:#fff; --tint:#f3f6fb;
+    --accent:#1f6feb; --ok:#0b7a3d; --ok-bg:rgba(18,161,80,.13); --bad:#b91c1c; --bad-bg:rgba(220,38,38,.11);
+    --font:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ink:#e8edf5; --ink-soft:#97a3b8; --line:rgba(255,255,255,.10);
+      --bg:#0b1220; --card:#131c2e; --tint:#1a2438;
+      --accent:#5b9dff; --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --bad:#f87171; --bad-bg:rgba(248,113,113,.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#e8edf5; --ink-soft:#97a3b8; --line:rgba(255,255,255,.10);
+    --bg:#0b1220; --card:#131c2e; --tint:#1a2438;
+    --accent:#5b9dff; --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --bad:#f87171; --bad-bg:rgba(248,113,113,.14);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:var(--font); color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased}
+  main{max-width:1180px; margin:0 auto; padding:28px clamp(16px,3vw,32px) 60px}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  h1{margin:0; font-size:clamp(22px,2.6vw,30px); font-weight:800; letter-spacing:-.03em}
+  h1 small{display:block; font-size:12.5px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft); margin-bottom:6px}
+  .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:800; background:var(--ok-bg); color:var(--ok)}
+  .pill::before{content:""; width:8px; height:8px; border-radius:50%; background:currentColor}
+  .pill.wait{background:var(--bad-bg); color:var(--bad)}
+  .pill.off{background:var(--tint); color:var(--ink-soft)}
+  .notice{margin:16px 0 0; padding:14px 16px; border-radius:14px; background:var(--bad-bg); color:var(--bad); font-size:14px; font-weight:700; line-height:1.55}
+  .notice[hidden]{display:none}
+
+  .grid{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:16px; margin-top:20px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:22px; padding:22px}
+  .card h2{margin:0 0 14px; font-size:12.5px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft)}
+  .join{display:flex; gap:20px; align-items:center}
+  .join #qr{flex:none; width:132px; height:132px; border-radius:14px; background:#fff; padding:6px; display:grid; place-items:center}
+  .join #qr:empty{display:none}
+  .join #qr svg{width:100%; height:100%}
+  .urls{display:grid; gap:6px; min-width:0}
+  .urls a{font-family:var(--mono); font-size:clamp(18px,2.2vw,24px); font-weight:700; color:var(--accent); text-decoration:none; overflow-wrap:anywhere}
+  .urls p{margin:4px 0 0; font-size:13px; font-weight:600; color:var(--ink-soft); line-height:1.55}
+  .files{display:grid; gap:10px}
+  .file{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-radius:14px; background:var(--tint)}
+  .file b{display:block; font-size:14.5px}
+  .file small{display:block; font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); overflow-wrap:anywhere; margin-top:2px}
+  button{font-family:inherit; font-size:13px; font-weight:800; border:0; border-radius:11px; padding:9px 13px; cursor:pointer; background:var(--accent); color:#fff; flex:none}
+  button.ghost{background:var(--tint); color:var(--ink); border:1px solid var(--line)}
+  button:focus-visible{outline:3px solid rgba(31,111,235,.45); outline-offset:2px}
+
+  .tablewrap{overflow-x:auto; margin:0 -22px; padding:0 22px}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{padding:10px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  th{font-size:12px; font-weight:800; color:var(--ink-soft)}
+  td.n,th.n{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
+  td.dim{color:var(--ink-soft)}
+  tr.x td{opacity:.45; text-decoration:line-through}
+  tr.x td:last-child{opacity:1; text-decoration:none}
+  .tag{display:inline-block; min-width:40px; text-align:center; font-size:12px; font-weight:800; padding:3px 8px; border-radius:999px}
+  .tag.ok{background:var(--ok-bg); color:var(--ok)}
+  .tag.fail{background:var(--bad-bg); color:var(--bad)}
+  .full{margin-top:16px}
+  .row{display:flex; align-items:baseline; justify-content:space-between; gap:12px}
+  .row span{font-size:13px; font-weight:700; color:var(--ink-soft)}
+  .empty{padding:18px 0 4px; color:var(--ink-soft); font-size:14px; font-weight:600}
+
+  @media (max-width:860px){ .grid{grid-template-columns:1fr} .join{flex-direction:column; align-items:flex-start} }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><small>러닝 타이머</small>선생님 관리 화면</h1>
+    <span class="pill off" id="status">연결 중…</span>
+  </header>
+  <p class="notice" id="notice" hidden></p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>학생 기기 접속 주소</h2>
+      <div class="join">
+        <div id="qr" aria-label="접속 주소 QR 코드"></div>
+        <div class="urls" id="urls"></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>엑셀 파일</h2>
+      <div class="files">
+        <div class="file"><div><b>학생명단.xlsx</b><small id="fRoster"></small></div><button class="ghost" data-open="roster" type="button">열기</button></div>
+        <div class="file"><div><b>러닝기록.xlsx</b><small id="fBook"></small></div><button class="ghost" data-open="book" type="button">열기</button></div>
+        <div class="file"><div><b>기록 폴더</b><small id="fDir"></small></div><button class="ghost" data-open="dir" type="button">열기</button></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card full">
+    <div class="row"><h2>최고기록</h2><span id="total"></span></div>
+    <div class="tablewrap"><table id="best"></table></div>
+  </section>
+
+  <section class="card full">
+    <div class="row"><h2>최근 측정</h2><span>잘못 잰 기록은 <b>제외</b>하면 최고기록에서 빠져요</span></div>
+    <div class="tablewrap"><table id="recent"></table></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sec = n => (Math.round(n * 100) / 100).toFixed(2);
+  let qrFor = '';
+
+  async function api(body){
+    const res = await fetch('/api', { method: 'POST', body: JSON.stringify(body) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  function setStatus(kind, text){ const s = $('status'); s.className = 'pill ' + kind; s.textContent = text; }
+  function notice(text){ $('notice').hidden = !text; $('notice').textContent = text || ''; }
+
+  function render(d){
+    const errs = [d.rosterError, d.bookError].filter(Boolean);
+    notice(errs.join(' '));
+    if (d.bookError) setStatus('wait', '엑셀 저장 대기 중');
+    else if (d.pending) setStatus('off', '저장 중…');
+    else setStatus('', '저장됨' + (d.savedAt ? ' · ' + d.savedAt : ''));
+
+    const addrs = d.addresses || [];
+    $('urls').innerHTML = addrs.length
+      ? addrs.map(a => `<a href="${esc(a)}" target="_blank" rel="noopener">${esc(a)}</a>`).join('') +
+        '<p>학생 기기를 이 컴퓨터와 <b>같은 와이파이</b>에 연결하고 위 주소로 접속하세요.</p>'
+      : '<p>네트워크 주소를 찾지 못했어요. 와이파이 연결을 확인하세요.</p>';
+    if (addrs[0] && addrs[0] !== qrFor && window.qrcode) {
+      const q = qrcode(0, 'M'); q.addData(addrs[0]); q.make();
+      $('qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+      qrFor = addrs[0];
+    }
+
+    $('fRoster').textContent = d.files.roster;
+    $('fBook').textContent = d.files.book;
+    $('fDir').textContent = d.files.dir;
+
+    const courses = d.courses || [];
+    $('total').textContent = `학생 ${d.best.length}명 · 기록 ${d.total}건`;
+    $('best').innerHTML = d.best.length
+      ? `<thead><tr><th>학년</th><th>반</th><th>번호</th><th>이름</th>${courses.map(c => `<th class="n">${esc(c)}</th>`).join('')}<th class="n">측정</th></tr></thead><tbody>` +
+        d.best.map(b => `<tr><td class="dim">${esc(b.grade)}</td><td class="dim">${esc(b.cls)}</td><td class="dim">${esc(b.num)}</td><td><b>${esc(b.name)}</b></td>` +
+          courses.map(c => `<td class="n">${c in b.best ? sec(b.best[c]) : '<span class="dim">—</span>'}</td>`).join('') +
+          `<td class="n dim">${b.count}</td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="empty">학생명단.xlsx에 학생을 입력하세요.</td></tr></tbody>';
+
+    $('recent').innerHTML = d.recent.length
+      ? '<thead><tr><th>시각</th><th>학생</th><th>코스</th><th class="n">기록</th><th>결과</th><th></th></tr></thead><tbody>' +
+        d.recent.map(r => `<tr class="${r.excluded ? 'x' : ''}"><td class="dim">${esc(r.at)}</td><td><b>${esc(r.name)}</b> <span class="dim">${esc(r.who)}</span></td><td>${esc(r.course)}</td><td class="n">${sec(r.sec)}초</td>` +
+          `<td>${r.result ? `<span class="tag ${r.result === '성공' ? 'ok' : 'fail'}">${esc(r.result)}</span>` : ''}</td>` +
+          `<td><button class="ghost" type="button" data-x="${esc(r.id)}" data-on="${r.excluded ? 0 : 1}">${r.excluded ? '되살리기' : '제외'}</button></td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="empty">아직 측정한 기록이 없어요.</td></tr></tbody>';
+  }
+
+  async function refresh(){
+    try {
+      const d = await api({ action: 'board' });
+      if (!d.ok) { setStatus('wait', '사용할 수 없음'); notice(d.error); return; }
+      render(d);
+    } catch (_) {
+      setStatus('wait', '서버 꺼짐');
+      notice('로컬 서버에 연결할 수 없어요. 시작 파일(start-windows.bat 또는 start-mac.command)로 서버를 켠 뒤 이 컴퓨터에서 http://localhost:8000/teacher.html 로 여세요.');
+    }
+  }
+
+  document.addEventListener('click', async e => {
+    const x = e.target.closest('[data-x]');
+    const o = e.target.closest('[data-open]');
+    try {
+      if (x) { const d = await api({ action: 'exclude', id: x.dataset.x, on: x.dataset.on === '1' }); d.ok ? render(d) : notice(d.error); }
+      if (o) { const d = await api({ action: 'open', which: o.dataset.open }); if (!d.ok) notice(d.error); }
+    } catch (_) { notice('서버에 연결할 수 없어요.'); }
+  });
+
+  refresh();
+  setInterval(refresh, 4000);
+})();
+</script>
+</body>
+</html>

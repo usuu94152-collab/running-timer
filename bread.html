@@ -378,6 +378,7 @@
     opacity:1 !important; transform:none !important; filter:none !important; pointer-events:auto !important;
   }
 </style></noscript>
+<link rel="stylesheet" href="student.css">
 </head>
 <body>
 
@@ -486,6 +487,8 @@
   <div class="stat"><b>랩</b><strong id="sLaps">0<em>회</em></strong></div>
 </section>
 
+<script src="sheet-config.js"></script>
+<script src="student.js"></script>
 <script>
 (() => {
   const hero   = document.getElementById('hero');
@@ -609,6 +612,11 @@
     overEl.textContent  = ((base - TARGET_MS) / 1000).toFixed(2);
     underEl.textContent = ((TARGET_MS - base) / 1000).toFixed(2);
     document.body.classList.add(kind === 'ok' ? 'is-success' : 'is-failed');
+    // student.js 가 받아서 로그인한 학생의 기록으로 시트에 저장
+    document.dispatchEvent(new CustomEvent('run:finish', { detail: {
+      course: (document.querySelector('.nav a[aria-current]') || {}).textContent,
+      ms: base, target: TARGET_MS, result: kind, laps: laps.map(l => l.split)
+    } }));
     const v = kind === 'ok' ? okClip : failClip;   // a course may have no result clip
     if (!v) return;
     v.currentTime = 0;
@@ -654,8 +662,12 @@
     sync();
   }
 
+  // 학생 로그인 전에는 측정하지 않음 (student.js)
+  const canRun = () => !window.RunStudent || window.RunStudent.canRun();
+
   toggle.addEventListener('click', () => {
     if (result) { resetAll(); return; }        // "다시 도전"
+    if (!canRun()) return;
     running ? finish() : start();
   });
 
@@ -691,6 +703,7 @@
   });
 
   resetBtn.addEventListener('click', resetAll);
+  document.addEventListener('student:change', resetAll);   // 다음 학생은 새 타이머로
 
   /* ================= BUZZER ================= */
   // Space always works. A USB buzzer that sends some other key (or acts as a
@@ -738,6 +751,7 @@
   // 시작 → 정지 → 다시 도전, the same as pressing the main button
   function press(){
     if (!revealed) return;                    // intro still playing: ignore
+    if (!result && !canRun()) return;         // not logged in yet
     if (result) resetAll(); else running ? finish() : start();
   }
 

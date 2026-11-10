@@ -1,7 +1,7 @@
 """Run with python3 tests/course-navigation.py (requires Playwright and Chromium).
 
 Serves real pages/videos locally; mocks the Sheets API so no live student records
-are read or written. Includes an old cached obstacle-only preference.
+are read or written. Verifies obstacle-only navigation, direct URL redirects and stale preferences.
 """
 import functools
 import json
@@ -38,7 +38,7 @@ try:
         def api(route):
             body = route.request.post_data_json
             if body['action'] == 'status':
-                result = {'ok': True, 'course': '장애물', 'recording': True, 'classKey': '2-1', 'since': 1}
+                result = {'ok': True, 'course': '지그재그', 'recording': True, 'classKey': '2-1', 'since': 1}
             else:
                 if body['action'] == 'save':
                     saves.append(body)
@@ -52,7 +52,7 @@ try:
           localStorage.setItem('running-timer-device', JSON.stringify({
             students: [{name:'테스트학생', label:'2학년 1반 1번', classKey:'2-1', token:'test'}], active:'test'
           }));
-          localStorage.setItem('running-timer-course', JSON.stringify('장애물'));
+          localStorage.setItem('running-timer-course', JSON.stringify('지그재그'));
         }""")
         page = context.new_page()
         page.on('pageerror', lambda error: errors.append(str(error)))
@@ -61,13 +61,17 @@ try:
             page.set_viewport_size(viewport)
             page.goto(base + '/bread.html')
             for path, name in COURSES:
-                page.locator(f'.nav a[href="{path}"]').click()
-                expect(page).to_have_url(base + '/' + path)
+                page.goto(base + '/' + path)
+                expect(page).to_have_url(base + '/bread.html')
                 expect(page.locator('#recBadge')).to_contain_text('2학년 1반 기록 중')
-                expect(page.locator('.nav a[aria-current]')).to_have_text(name)
+                expect(page.locator('.nav a[aria-current]')).to_have_text('장애물')
                 for course_path, _ in COURSES:
-                    expect(page.locator(f'.nav a[href="{course_path}"]')).to_be_visible()
-                expect(page.locator('#mineBest .mine__tile')).to_have_count(4)
+                    link = page.locator(f'.nav a[href="{course_path}"]')
+                    if course_path == 'bread.html':
+                        expect(link).to_be_visible()
+                    else:
+                        expect(link).to_be_hidden()
+                expect(page.locator('#mineBest .mine__tile')).to_have_count(1)
                 expect(page.locator('#mineBest')).to_contain_text('장애물')
                 page.wait_for_function("[...document.querySelectorAll('video')].every(v => v.readyState >= 1)")
                 clips.add(page.locator('#clip').get_attribute('src'))
@@ -76,20 +80,29 @@ try:
                 page.locator('#lap').click()
                 page.locator('#toggle').click()
                 expect(page.locator('#saveText')).to_contain_text('저장됨')
-                assert saves[-1]['course'] == name
+                assert saves[-1]['course'] == '장애물'
                 assert saves[-1]['sec'] > 0 and len(saves[-1]['laps']) == 1
-                expect(page).to_have_url(base + '/' + path)
+                expect(page).to_have_url(base + '/bread.html')
                 page.locator('#reset').click()
                 expect(page.locator('#ss')).to_have_text('00')
-                if name != '장애물':
-                    expect(page.locator('#crewToday')).to_be_hidden()
             page.reload()
-            expect(page.locator('#mineBest .mine__tile')).to_have_count(4)
-        assert len(clips) == 4
+            expect(page.locator('#mineBest .mine__tile')).to_have_count(1)
+        assert clips == {'BREAD-RUN-INTRO.mp4'}
         assert len(saves) == 8
+        anonymous = browser.new_context(reduced_motion='reduce')
+        anonymous.route('**/sheet-config.js', lambda route: route.fulfill(
+            body="window.RUNNING_SHEET_URL = '/api';", content_type='application/javascript'))
+        anonymous.route('**/api', api)
+        guest = anonymous.new_page()
+        guest.goto(base + '/index.html')
+        expect(guest).to_have_url(base + '/bread.html')
+        expect(guest.locator('#gateForm')).to_be_visible()
+        expect(guest.locator('.nav a[href="index.html"]')).to_be_hidden()
+        expect(guest.locator('.nav a[href="bread.html"]')).to_be_visible()
+        anonymous.close()
         assert not errors, errors
         browser.close()
-    print('PASS: all 4 tabs, distinct existing videos, timers/laps/save/reset, cached preference, obstacle assessment, desktop/mobile')
+    print('PASS: obstacle-only tabs and best record, direct URL redirects, stale preference/status, timer/lap/save/reset, anonymous login, desktop/mobile')
 finally:
     server.shutdown()
     server.server_close()

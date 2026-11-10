@@ -5,7 +5,7 @@
  * - 한 기기(크롬북)에 여러 학생이 미리 로그인해 두고, 수업 때는 이름 버튼만 눌러 바로 측정
  *   (로그인은 이 기기에 남아 다음 수업에도 그대로. [편집]으로 학생을 뺄 수 있음)
  * - 선생님이 [기록 시작]을 누른 동안만 저장 (선생님 페이지 teacher.html)
- * - 평가 코스와 관계없이 모든 코스를 탭으로 선택할 수 있음 (평가는 설정된 코스만 집계)
+ * - 이 시트 연동 사이트는 장애물 코스만 표시 (다른 코스는 독립형 클론 사이트에서 사용)
  * - 스톱워치 위에 이번 기록 시간의 연습 횟수와 우수기록 합산 표시 (등급은 보여 주지 않음)
  * - 정지를 누르면(코스 페이지가 보내는 'run:finish' 이벤트) 기록을 저장
  * - 인터넷이 끊겨도 기록은 이 브라우저에 보관했다가 연결되면 다시 보냄
@@ -37,6 +37,13 @@
   const courseLinks = Array.from(document.querySelectorAll('.nav ul a[href$=".html"]'));
   const current = document.querySelector('.nav ul a[aria-current]');
   const COURSE = current ? current.textContent.trim() : document.title;
+
+  // 기존 수업 사이트는 장애물만 표시한다. 다른 코스의 저장된 주소로 와도 이동한다.
+  const obstacle = courseLinks.find(a => a.getAttribute('href') === 'bread.html');
+  if (obstacle) {
+    courseLinks.forEach(a => { a.closest('li').hidden = a !== obstacle; });
+    if (current !== obstacle) { location.replace(obstacle.getAttribute('href')); return; }
+  }
 
   const device = (API && load(L, DEVICE_KEY)) || {};
   let crew = (device.students || []).filter(x => x && x.token && x.name);   // [{ name, label, token }]
@@ -245,8 +252,7 @@
     mine.querySelector('#mineCount').textContent = `총 ${records.count || 0}회 측정`;
 
     const best = records.best || {};
-    const names = courseLinks.map(a => a.textContent.trim());
-    Object.keys(best).forEach(c => { if (names.indexOf(c) < 0) names.push(c); });
+    const names = ['장애물'];
     mine.querySelector('#mineBest').innerHTML = names.map(c => {
       const b = best[c];
       const link = courseLinks.find(a => a.textContent.trim() === c);

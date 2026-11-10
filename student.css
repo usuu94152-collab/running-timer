@@ -37,6 +37,19 @@
 }
 .gate__field input::placeholder{color:#a3aec0; font-weight:600; font-size:15px}
 .gate__field input:focus{border-color:var(--accent); box-shadow:0 0 0 4px rgba(31,111,235,.15)}
+.gate__card[hidden]{display:none}
+.gate__sub b{color:var(--ink)}
+.gate__pw{position:relative; display:block}
+.gate__pw input{padding-right:78px}
+/* 아이폰 비밀번호 칸은 한글 입력이 안 돼서 글자 칸을 점으로 가린다 */
+.gate__field input.is-masked{-webkit-text-security:disc; text-security:disc}
+.gate__field input.is-masked::placeholder{-webkit-text-security:none}
+.gate__eye{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  padding:8px 11px; border-radius:11px; font-size:12.5px;
+  background:rgba(11,21,38,.06); color:var(--ink-soft);
+}
+.gate__eye:active{transform:translateY(-50%) scale(.97)}
 .gate__err{min-height:20px; margin:2px 4px 10px; font-size:13px; font-weight:700; line-height:1.5; color:#dc2626}
 .gate__btn{
   width:100%; padding:17px; border-radius:17px; font-size:16.5px;
@@ -68,6 +81,34 @@
 .who button{flex:none; font-size:12.5px; padding:9px 13px; border-radius:12px; background:rgba(11,21,38,.07); color:var(--ink)}
 .who button:hover{background:rgba(11,21,38,.12)}
 .who button[hidden]{display:none}
+
+/* ---------- 이 기기(크롬북)에 로그인한 학생들: 이름 버튼 ---------- */
+.crew{margin:-6px 0 18px}
+.crew[hidden]{display:none}
+.crew__head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px}
+.crew__rec{display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:800; color:var(--ink-soft); line-height:1.35}
+.crew__rec::before{content:""; flex:none; width:8px; height:8px; border-radius:50%; background:#b9c4d4}
+.crew__rec.is-on{color:#0b7a3d}
+.crew__rec.is-on::before{background:#12a150; box-shadow:0 0 0 4px rgba(18,161,80,.18); animation:pulse 1.6s infinite}
+.crew__rec.is-off{color:#9a5b00}
+.crew__rec.is-off::before{background:#f59e0b}
+.crew__head button{flex:none; font-size:12px; padding:6px 11px; border-radius:999px; background:rgba(11,21,38,.06); color:var(--ink-soft)}
+.crew.is-editing .crew__head button{background:var(--ink); color:#fff}
+.crew__chips{display:flex; flex-wrap:wrap; gap:7px}
+.chip{
+  font-size:15px; font-weight:800; letter-spacing:-.02em;
+  padding:11px 15px; border-radius:14px; gap:6px;
+  background:rgba(255,255,255,.62); color:var(--ink);
+  border:1.5px solid rgba(11,21,38,.10);
+}
+.chip:hover{background:#fff}
+.chip.is-on{background:var(--accent); color:#fff; border-color:transparent; box-shadow:0 10px 20px -10px rgba(31,111,235,.9)}
+.chip small{font-size:11.5px; font-weight:700; opacity:.7}
+.chip i{font-style:normal; display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:#dc2626; color:#fff; font-size:13px; line-height:1}
+.crew.is-editing .chip{border-style:dashed}
+.crew__note{margin:8px 0 0; min-height:0; font-size:12.5px; font-weight:700; color:#b45309}
+.crew__note:empty{display:none}
+.save[data-kind="closed"]{color:#9a5b00}
 
 /* ---------- 저장 상태 ---------- */
 .save{

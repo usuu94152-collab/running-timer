@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>선생님 관리 · 러닝 타이머</title>
+<title>선생님 페이지 · 러닝 타이머</title>
 <style>
   :root{
     --ink:#0b1526; --ink-soft:#5b6b86; --line:rgba(11,21,38,.10);
     --bg:#eef2f7; --card:#fff; --tint:#f3f6fb;
-    --accent:#1f6feb; --ok:#0b7a3d; --ok-bg:rgba(18,161,80,.13); --bad:#b91c1c; --bad-bg:rgba(220,38,38,.11);
+    --accent:#1f6feb; --ok:#0b7a3d; --ok-solid:#16a34a; --ok-bg:rgba(18,161,80,.13);
+    --bad:#b91c1c; --bad-solid:#dc2626; --bad-bg:rgba(220,38,38,.11); --warn:#9a5b00; --warn-bg:rgba(245,158,11,.15);
     --font:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
     --mono:"SF Mono","JetBrains Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
   }
@@ -17,29 +18,53 @@
       --ink:#e8edf5; --ink-soft:#97a3b8; --line:rgba(255,255,255,.10);
       --bg:#0b1220; --card:#131c2e; --tint:#1a2438;
       --accent:#5b9dff; --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --bad:#f87171; --bad-bg:rgba(248,113,113,.14);
+      --warn:#fbbf24; --warn-bg:rgba(251,191,36,.14);
     }
   }
   :root[data-theme="dark"]{
     --ink:#e8edf5; --ink-soft:#97a3b8; --line:rgba(255,255,255,.10);
     --bg:#0b1220; --card:#131c2e; --tint:#1a2438;
     --accent:#5b9dff; --ok:#4ade80; --ok-bg:rgba(74,222,128,.14); --bad:#f87171; --bad-bg:rgba(248,113,113,.14);
+    --warn:#fbbf24; --warn-bg:rgba(251,191,36,.14);
   }
   *{box-sizing:border-box}
   body{margin:0; font-family:var(--font); color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased}
-  main{max-width:1180px; margin:0 auto; padding:28px clamp(16px,3vw,32px) 60px}
+  main{max-width:1180px; margin:0 auto; padding:24px 16px 60px}
+  [hidden]{display:none !important}
   header{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap}
   h1{margin:0; font-size:clamp(22px,2.6vw,30px); font-weight:800; letter-spacing:-.03em}
   h1 small{display:block; font-size:12.5px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft); margin-bottom:6px}
-  .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:800; background:var(--ok-bg); color:var(--ok)}
-  .pill::before{content:""; width:8px; height:8px; border-radius:50%; background:currentColor}
-  .pill.wait{background:var(--bad-bg); color:var(--bad)}
-  .pill.off{background:var(--tint); color:var(--ink-soft)}
   .notice{margin:16px 0 0; padding:14px 16px; border-radius:14px; background:var(--bad-bg); color:var(--bad); font-size:14px; font-weight:700; line-height:1.55}
-  .notice[hidden]{display:none}
-
-  .grid{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:16px; margin-top:20px}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:22px; padding:22px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:22px; padding:22px; margin-top:16px}
   .card h2{margin:0 0 14px; font-size:12.5px; font-weight:800; letter-spacing:.12em; color:var(--ink-soft)}
+  button{font-family:inherit; font-size:13px; font-weight:800; border:0; border-radius:11px; padding:9px 13px; cursor:pointer; background:var(--accent); color:#fff; flex:none}
+  button.ghost{background:var(--tint); color:var(--ink); border:1px solid var(--line)}
+  button:disabled{opacity:.55; cursor:progress}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(31,111,235,.45); outline-offset:2px}
+  input,select{font:inherit; font-size:15px; font-weight:600; color:var(--ink); background:var(--card); border:1.5px solid var(--line); border-radius:12px; padding:10px 12px}
+
+  /* 로그인 */
+  .login{max-width:400px; margin:40px auto 0}
+  .login p{margin:0 0 16px; font-size:14px; line-height:1.6; color:var(--ink-soft); font-weight:600}
+  .login input{width:100%; font-size:17px; padding:14px 15px}
+  .login button{width:100%; margin-top:12px; padding:15px; font-size:16px}
+  .login .err{min-height:20px; margin:10px 0 0; color:var(--bad); font-size:13px; font-weight:700}
+
+  /* 기록 시작 · 종료 */
+  .rec{display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap}
+  .rec__state{display:flex; align-items:center; gap:16px}
+  .rec__dot{width:18px; height:18px; border-radius:50%; background:#b9c4d4; flex:none}
+  .rec.is-on .rec__dot{background:var(--ok-solid); box-shadow:0 0 0 0 rgba(22,163,74,.5); animation:pulse 1.6s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 12px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}
+  .rec__state b{display:block; font-size:clamp(26px,3.4vw,36px); font-weight:800; letter-spacing:-.03em}
+  .rec__state small{display:block; margin-top:4px; font-size:14px; font-weight:700; color:var(--ink-soft)}
+  .rec.is-on .rec__state b{color:var(--ok)}
+  .rec__btn{font-size:clamp(18px,2vw,22px); padding:20px 34px; border-radius:18px; min-width:220px}
+  .rec__btn.start{background:var(--ok-solid); box-shadow:0 16px 30px -14px rgba(22,163,74,.9)}
+  .rec__btn.stop{background:var(--bad-solid); box-shadow:0 16px 30px -14px rgba(220,38,38,.9)}
+
+  .grid{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:16px}
+  .grid > .card{margin-top:16px}
   .join{display:flex; gap:20px; align-items:center}
   .join #qr{flex:none; width:132px; height:132px; border-radius:14px; background:#fff; padding:6px; display:grid; place-items:center}
   .join #qr:empty{display:none}
@@ -51,90 +76,222 @@
   .file{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-radius:14px; background:var(--tint)}
   .file b{display:block; font-size:14.5px}
   .file small{display:block; font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); overflow-wrap:anywhere; margin-top:2px}
-  button{font-family:inherit; font-size:13px; font-weight:800; border:0; border-radius:11px; padding:9px 13px; cursor:pointer; background:var(--accent); color:#fff; flex:none}
-  button.ghost{background:var(--tint); color:var(--ink); border:1px solid var(--line)}
-  button:focus-visible{outline:3px solid rgba(31,111,235,.45); outline-offset:2px}
+  .pill{display:inline-flex; align-items:center; gap:8px; padding:7px 13px; border-radius:999px; font-size:12.5px; font-weight:800; background:var(--ok-bg); color:var(--ok)}
+  .pill.wait{background:var(--bad-bg); color:var(--bad)}
+  .pill.off{background:var(--tint); color:var(--ink-soft)}
 
+  .row{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px}
+  .row h2{margin:0}
+  .row span{font-size:13px; font-weight:700; color:var(--ink-soft)}
+  .filters{display:flex; gap:8px; flex-wrap:wrap}
+  .filters input{width:150px}
   .tablewrap{overflow-x:auto; margin:0 -22px; padding:0 22px}
   table{width:100%; border-collapse:collapse; font-size:14px}
   th,td{padding:10px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
   th{font-size:12px; font-weight:800; color:var(--ink-soft)}
   td.n,th.n{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
-  td.dim{color:var(--ink-soft)}
+  td.dim,span.dim{color:var(--ink-soft)}
   tr.x td{opacity:.45; text-decoration:line-through}
   tr.x td:last-child{opacity:1; text-decoration:none}
   .tag{display:inline-block; min-width:40px; text-align:center; font-size:12px; font-weight:800; padding:3px 8px; border-radius:999px}
   .tag.ok{background:var(--ok-bg); color:var(--ok)}
   .tag.fail{background:var(--bad-bg); color:var(--bad)}
-  .full{margin-top:16px}
-  .row{display:flex; align-items:baseline; justify-content:space-between; gap:12px}
-  .row span{font-size:13px; font-weight:700; color:var(--ink-soft)}
+  .tag.warn{background:var(--warn-bg); color:var(--warn)}
   .empty{padding:18px 0 4px; color:var(--ink-soft); font-size:14px; font-weight:600}
+  .more{margin-top:12px}
 
-  @media (max-width:860px){ .grid{grid-template-columns:1fr} .join{flex-direction:column; align-items:flex-start} }
+  @media (max-width:860px){ .grid{grid-template-columns:1fr} .join{flex-direction:column; align-items:flex-start} .rec__btn{width:100%} }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1><small>러닝 타이머</small>선생님 관리 화면</h1>
-    <span class="pill off" id="status">연결 중…</span>
+    <h1><small>러닝 타이머</small>선생님 페이지</h1>
+    <div class="filters">
+      <a id="sheetLink" class="ghost" hidden target="_blank" rel="noopener"><button class="ghost" type="button">구글 시트 열기</button></a>
+      <button class="ghost" id="logout" type="button" hidden>로그아웃</button>
+    </div>
   </header>
   <p class="notice" id="notice" hidden></p>
 
-  <div class="grid">
-    <section class="card">
-      <h2>학생 기기 접속 주소</h2>
-      <div class="join">
-        <div id="qr" aria-label="접속 주소 QR 코드"></div>
-        <div class="urls" id="urls"></div>
+  <!-- 구글 시트 모드: 선생님 비밀번호 -->
+  <form class="card login" id="login" hidden>
+    <h2>선생님 로그인</h2>
+    <p>구글 시트 메뉴 <b>러닝 타이머 → 선생님 비밀번호 정하기</b>에서 정한 비밀번호를 입력하세요.</p>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="선생님 비밀번호">
+    <button id="loginBtn" type="submit">로그인</button>
+    <p class="err" id="loginErr" role="alert"></p>
+  </form>
+
+  <div id="app" hidden>
+    <!-- 기록 시작 · 종료 -->
+    <section class="card rec" id="rec">
+      <div class="rec__state">
+        <span class="rec__dot"></span>
+        <div><b id="recTitle">기록 대기</b><small id="recSub">기록 시작을 누르면 학생들이 측정한 기록이 저장돼요.</small></div>
       </div>
+      <button class="rec__btn start" id="recBtn" type="button">기록 시작</button>
     </section>
+
+    <!-- 로컬 서버 모드에서만: 접속 주소 · 엑셀 파일 -->
+    <div class="grid" id="localBox" hidden>
+      <section class="card">
+        <h2>학생 기기 접속 주소</h2>
+        <div class="join"><div id="qr" aria-label="접속 주소 QR 코드"></div><div class="urls" id="urls"></div></div>
+      </section>
+      <section class="card">
+        <div class="row"><h2>엑셀 파일</h2><span class="pill off" id="bookState"></span></div>
+        <div class="files">
+          <div class="file"><div><b>학생명단.xlsx</b><small id="fRoster"></small></div><button class="ghost" data-open="roster" type="button">열기</button></div>
+          <div class="file"><div><b>러닝기록.xlsx</b><small id="fBook"></small></div><button class="ghost" data-open="book" type="button">열기</button></div>
+          <div class="file"><div><b>기록 폴더</b><small id="fDir"></small></div><button class="ghost" data-open="dir" type="button">열기</button></div>
+        </div>
+      </section>
+    </div>
+
     <section class="card">
-      <h2>엑셀 파일</h2>
-      <div class="files">
-        <div class="file"><div><b>학생명단.xlsx</b><small id="fRoster"></small></div><button class="ghost" data-open="roster" type="button">열기</button></div>
-        <div class="file"><div><b>러닝기록.xlsx</b><small id="fBook"></small></div><button class="ghost" data-open="book" type="button">열기</button></div>
-        <div class="file"><div><b>기록 폴더</b><small id="fDir"></small></div><button class="ghost" data-open="dir" type="button">열기</button></div>
+      <div class="row"><h2 id="recentTitle">이번 시간 기록</h2><span id="recentSum"></span></div>
+      <div class="tablewrap"><table id="recent"></table></div>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2>학생별 최고기록 · 비밀번호</h2>
+        <div class="filters">
+          <select id="cls" aria-label="반 선택"></select>
+          <input id="q" type="search" placeholder="이름 검색" aria-label="이름 검색">
+        </div>
       </div>
+      <div class="tablewrap"><table id="best"></table></div>
+      <button class="ghost more" id="more" type="button" hidden>더 보기</button>
     </section>
   </div>
-
-  <section class="card full">
-    <div class="row"><h2>최고기록</h2><span id="total"></span></div>
-    <div class="tablewrap"><table id="best"></table></div>
-  </section>
-
-  <section class="card full">
-    <div class="row"><h2>최근 측정</h2><span>잘못 잰 기록은 <b>제외</b>하면 최고기록에서 빠져요</span></div>
-    <div class="tablewrap"><table id="recent"></table></div>
-  </section>
 </main>
 
+<script src="sheet-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 (() => {
+  const API = String(window.RUNNING_SHEET_URL || '').trim();
+  const TOKEN_KEY = 'running-timer-teacher';
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const sec = n => (Math.round(n * 100) / 100).toFixed(2);
-  let qrFor = '';
+  const two = n => String(n).padStart(2, '0');
+  const store = { get(){ try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch (_) { return ''; } },
+                  set(v){ try { v ? sessionStorage.setItem(TOKEN_KEY, v) : sessionStorage.removeItem(TOKEN_KEY); } catch (_) {} } };
 
-  async function api(body){
-    const res = await fetch('/api', { method: 'POST', body: JSON.stringify(body) });
+  let mode = '', token = store.get(), data = null, poll = 0, shown = 40, qrFor = '';
+
+  async function call(body){
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify(body), redirect: 'follow' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   }
+  const op = (name, extra) => call(Object.assign({ action: 'teacher', token, op: name }, extra || {}));
+  function notice(t){ $('notice').hidden = !t; $('notice').textContent = t || ''; }
 
-  function setStatus(kind, text){ const s = $('status'); s.className = 'pill ' + kind; s.textContent = text; }
-  function notice(text){ $('notice').hidden = !text; $('notice').textContent = text || ''; }
+  /* ---------- 시작 ---------- */
+  async function boot(){
+    if (!API) { notice('sheet-config.js 에 구글 시트 웹 앱 주소가 없어요. SHEET-SETUP.md 를 보고 넣어 주세요.'); return; }
+    try {
+      const ping = await call({ action: 'ping' });
+      mode = ping && ping.mode === 'local' ? 'local' : 'sheet';
+    } catch (_) {
+      notice('기록 서버에 연결할 수 없어요. 인터넷 연결이나 sheet-config.js 의 주소를 확인하세요.');
+      return;
+    }
+    if (mode === 'local' && !token) {
+      const j = await call({ action: 'teacherLogin' }).catch(() => null);
+      if (!j || !j.ok) { notice((j && j.error) || '서버에 연결할 수 없어요.'); return; }
+      token = j.token; store.set(token);
+    }
+    token ? refresh() : showLogin();
+  }
 
+  function showLogin(){
+    clearTimeout(poll);
+    $('app').hidden = true; $('logout').hidden = true;
+    $('login').hidden = false;
+    setTimeout(() => $('pw').focus(), 50);
+  }
+
+  $('login').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('loginBtn').disabled = true; $('loginErr').textContent = '';
+    try {
+      const j = await call({ action: 'teacherLogin', password: $('pw').value });
+      if (!j.ok) { $('loginErr').textContent = j.error; return; }
+      token = j.token; store.set(token);
+      $('login').hidden = true; $('pw').value = '';
+      refresh();
+    } catch (_) {
+      $('loginErr').textContent = '서버에 연결할 수 없어요.';
+    } finally { $('loginBtn').disabled = false; }
+  });
+
+  $('logout').addEventListener('click', () => { token = ''; store.set(''); showLogin(); });
+
+  /* ---------- 불러오기 ---------- */
+  async function refresh(){
+    clearTimeout(poll);
+    try {
+      const d = await op('board');
+      if (!d.ok) {
+        if (d.relogin && mode === 'sheet') { token = ''; store.set(''); showLogin(); return; }
+        notice(d.error);
+      } else {
+        notice('');
+        render(d);
+      }
+    } catch (_) {
+      notice(mode === 'local'
+        ? '로컬 서버가 꺼져 있어요. start-windows.bat(맥은 start-mac.command)로 다시 켜 주세요.'
+        : '서버에 연결할 수 없어요. 인터넷 연결을 확인하세요.');
+    }
+    poll = setTimeout(refresh, mode === 'local' ? 4000 : 10000);
+  }
+
+  /* ---------- 그리기 ---------- */
   function render(d){
-    const errs = [d.rosterError, d.bookError].filter(Boolean);
-    notice(errs.join(' '));
-    if (d.bookError) setStatus('wait', '엑셀 저장 대기 중');
-    else if (d.pending) setStatus('off', '저장 중…');
-    else setStatus('', '저장됨' + (d.savedAt ? ' · ' + d.savedAt : ''));
+    data = d;
+    $('app').hidden = false;
+    $('logout').hidden = mode !== 'sheet';
+    if (d.sheetUrl) { $('sheetLink').href = d.sheetUrl; $('sheetLink').hidden = false; }
+    paintRec();
+    if (mode === 'local') paintLocal(d);
+    paintRecent();
+    paintBest();
+  }
 
+  function paintRec(){
+    const on = !!(data && data.recording);
+    $('rec').classList.toggle('is-on', on);
+    $('recTitle').textContent = on ? '기록 중' : '기록 대기';
+    if (on) {
+      const s = Math.max(0, Math.floor((Date.now() - data.since) / 1000));
+      $('recSub').textContent = `시작 ${new Date(data.since).toTimeString().slice(0, 5)} · ${two(Math.floor(s / 60))}:${two(s % 60)} 지남 · 학생들이 측정한 기록이 저장되고 있어요`;
+    } else {
+      $('recSub').textContent = '지금은 측정해도 저장되지 않아요. 수업을 시작할 때 기록 시작을 누르세요.';
+    }
+    $('recBtn').textContent = on ? '기록 종료' : '기록 시작';
+    $('recBtn').className = 'rec__btn ' + (on ? 'stop' : 'start');
+  }
+  setInterval(() => { if (data && data.recording) paintRec(); }, 1000);
+
+  $('recBtn').addEventListener('click', async () => {
+    const on = data && data.recording;
+    if (on && !confirm('기록을 종료할까요? 이후에 측정한 기록은 저장되지 않아요.')) return;
+    $('recBtn').disabled = true;
+    try {
+      const d = await op(on ? 'stop' : 'start');
+      d.ok ? render(d) : notice(d.error);
+    } catch (_) { notice('서버에 연결할 수 없어요. 다시 눌러 주세요.'); }
+    finally { $('recBtn').disabled = false; }
+  });
+
+  function paintLocal(d){
+    $('localBox').hidden = false;
     const addrs = d.addresses || [];
     $('urls').innerHTML = addrs.length
       ? addrs.map(a => `<a href="${esc(a)}" target="_blank" rel="noopener">${esc(a)}</a>`).join('') +
@@ -145,50 +302,71 @@
       $('qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
       qrFor = addrs[0];
     }
-
     $('fRoster').textContent = d.files.roster;
     $('fBook').textContent = d.files.book;
     $('fDir').textContent = d.files.dir;
+    const b = $('bookState');
+    b.className = 'pill ' + (d.bookError ? 'wait' : d.pending ? 'off' : '');
+    b.textContent = d.bookError ? '엑셀 저장 대기 중' : d.pending ? '저장 중…' : '저장됨' + (d.savedAt ? ' · ' + d.savedAt : '');
+    const errs = [d.rosterError, d.bookError].filter(Boolean).join(' ');
+    if (errs) notice(errs);
+  }
 
-    const courses = d.courses || [];
-    $('total').textContent = `학생 ${d.best.length}명 · 기록 ${d.total}건`;
-    $('best').innerHTML = d.best.length
-      ? `<thead><tr><th>학년</th><th>반</th><th>번호</th><th>이름</th>${courses.map(c => `<th class="n">${esc(c)}</th>`).join('')}<th class="n">측정</th></tr></thead><tbody>` +
-        d.best.map(b => `<tr><td class="dim">${esc(b.grade)}</td><td class="dim">${esc(b.cls)}</td><td class="dim">${esc(b.num)}</td><td><b>${esc(b.name)}</b></td>` +
-          courses.map(c => `<td class="n">${c in b.best ? sec(b.best[c]) : '<span class="dim">—</span>'}</td>`).join('') +
-          `<td class="n dim">${b.count}</td></tr>`).join('') + '</tbody>'
-      : '<tbody><tr><td class="empty">학생명단.xlsx에 학생을 입력하세요.</td></tr></tbody>';
-
-    $('recent').innerHTML = d.recent.length
+  function paintRecent(){
+    const r = data.recent || [];
+    const live = r.filter(x => !x.excluded);
+    $('recentTitle').textContent = data.recording ? '이번 시간 기록' : '지난 기록 시간의 기록';
+    $('recentSum').textContent = r.length ? `학생 ${new Set(live.map(x => x.who + x.name)).size}명 · ${live.length}건` : '';
+    $('recent').innerHTML = r.length
       ? '<thead><tr><th>시각</th><th>학생</th><th>코스</th><th class="n">기록</th><th>결과</th><th></th></tr></thead><tbody>' +
-        d.recent.map(r => `<tr class="${r.excluded ? 'x' : ''}"><td class="dim">${esc(r.at)}</td><td><b>${esc(r.name)}</b> <span class="dim">${esc(r.who)}</span></td><td>${esc(r.course)}</td><td class="n">${sec(r.sec)}초</td>` +
-          `<td>${r.result ? `<span class="tag ${r.result === '성공' ? 'ok' : 'fail'}">${esc(r.result)}</span>` : ''}</td>` +
-          `<td><button class="ghost" type="button" data-x="${esc(r.id)}" data-on="${r.excluded ? 0 : 1}">${r.excluded ? '되살리기' : '제외'}</button></td></tr>`).join('') + '</tbody>'
-      : '<tbody><tr><td class="empty">아직 측정한 기록이 없어요.</td></tr></tbody>';
+        r.map(x => `<tr class="${x.excluded ? 'x' : ''}"><td class="dim">${esc(x.at)}</td><td><b>${esc(x.name)}</b> <span class="dim">${esc(x.who)}</span></td><td>${esc(x.course)}</td><td class="n">${sec(x.sec)}초</td>` +
+          `<td>${x.result ? `<span class="tag ${x.result === '성공' ? 'ok' : 'fail'}">${esc(x.result)}</span>` : ''}</td>` +
+          `<td><button class="ghost" type="button" data-x="${esc(x.id)}" data-on="${x.excluded ? 0 : 1}">${x.excluded ? '되살리기' : '제외'}</button></td></tr>`).join('') + '</tbody>'
+      : `<tbody><tr><td class="empty">${data.recording ? '아직 측정한 기록이 없어요.' : '기록 시작을 누르면 이번 시간 기록이 여기에 쌓여요.'}</td></tr></tbody>`;
   }
 
-  async function refresh(){
-    try {
-      const d = await api({ action: 'board' });
-      if (!d.ok) { setStatus('wait', '사용할 수 없음'); notice(d.error); return; }
-      render(d);
-    } catch (_) {
-      setStatus('wait', '서버 꺼짐');
-      notice('로컬 서버에 연결할 수 없어요. 시작 파일(start-windows.bat 또는 start-mac.command)로 서버를 켠 뒤 이 컴퓨터에서 http://localhost:8000/teacher.html 로 여세요.');
+  function classOf(b){ return [b.grade, b.cls].filter(Boolean).join('-'); }
+
+  function paintBest(){
+    const sel = $('cls');
+    const classes = [...new Set(data.best.map(classOf))].filter(Boolean);
+    const want = ['', ...classes].join('|');
+    if (sel.dataset.opts !== want) {
+      const keep = sel.value;
+      sel.innerHTML = '<option value="">전체 반</option>' + classes.map(c => `<option value="${esc(c)}">${esc(c)}반</option>`).join('');
+      sel.value = classes.includes(keep) ? keep : '';
+      sel.dataset.opts = want;
     }
+    const q = $('q').value.replace(/\s/g, '');
+    const list = data.best.filter(b => (!sel.value || classOf(b) === sel.value) && (!q || b.name.includes(q)));
+    const courses = data.courses || [];
+    $('best').innerHTML = list.length
+      ? `<thead><tr><th>반</th><th>번호</th><th>이름</th>${courses.map(c => `<th class="n">${esc(c)}</th>`).join('')}<th class="n">측정</th><th>비밀번호</th></tr></thead><tbody>` +
+        list.slice(0, shown).map(b => `<tr><td class="dim">${esc(classOf(b))}</td><td class="dim">${esc(b.num)}</td><td><b>${esc(b.name)}</b></td>` +
+          courses.map(c => `<td class="n">${c in b.best ? sec(b.best[c]) : '<span class="dim">—</span>'}</td>`).join('') +
+          `<td class="n dim">${b.count}</td><td>${b.hasPassword
+            ? `<span class="tag ok">설정됨</span> <button class="ghost" type="button" data-reset="${esc(b.key)}" data-name="${esc(b.name)}">초기화</button>`
+            : '<span class="tag warn">처음 로그인 전</span>'}</td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="empty">학생명단에 학생이 없거나 검색 결과가 없어요.</td></tr></tbody>';
+    $('more').hidden = list.length <= shown;
   }
+
+  $('cls').addEventListener('change', () => { shown = 40; paintBest(); });
+  $('q').addEventListener('input', () => { shown = 40; paintBest(); });
+  $('more').addEventListener('click', () => { shown += 80; paintBest(); });
 
   document.addEventListener('click', async e => {
-    const x = e.target.closest('[data-x]');
-    const o = e.target.closest('[data-open]');
+    const x = e.target.closest('[data-x]'), r = e.target.closest('[data-reset]'), o = e.target.closest('[data-open]');
     try {
-      if (x) { const d = await api({ action: 'exclude', id: x.dataset.x, on: x.dataset.on === '1' }); d.ok ? render(d) : notice(d.error); }
-      if (o) { const d = await api({ action: 'open', which: o.dataset.open }); if (!d.ok) notice(d.error); }
+      if (x) { const d = await op('exclude', { id: x.dataset.x, on: x.dataset.on === '1' }); d.ok ? render(d) : notice(d.error); }
+      if (r && confirm(`${r.dataset.name} 학생의 비밀번호를 초기화할까요?\n다음 로그인 때 담임 선생님 성함으로 들어와 새 비밀번호를 만들어요.`)) {
+        const d = await op('resetPassword', { key: r.dataset.reset }); d.ok ? render(d) : notice(d.error);
+      }
+      if (o) { const d = await op('open', { which: o.dataset.open }); if (!d.ok) notice(d.error); }
     } catch (_) { notice('서버에 연결할 수 없어요.'); }
   });
 
-  refresh();
-  setInterval(refresh, 4000);
+  boot();
 })();
 </script>
 </body>

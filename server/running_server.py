@@ -8,7 +8,7 @@
 이 컴퓨터가 러닝 타이머 웹페이지를 띄워 주고, 같은 와이파이의 태블릿·휴대폰이
 http://<이 컴퓨터 IP>:8000 으로 접속해 측정하면 기록이 이 컴퓨터에 저장된다.
 
-  기록/학생명단.xlsx         선생님이 입력 (이름, 생년월일 [, 학년, 반, 번호])
+  기록/학생명단.xlsx         선생님이 입력 (이름, 담임 [, 학년, 반, 번호])
   기록/러닝기록.xlsx         자동 생성: 최고기록 · 기록 탭
   기록/백업-기록원본.jsonl    모든 측정의 원본 (엑셀 파일이 열려 있어도 여기엔 바로 저장)
 
@@ -16,9 +16,12 @@ http://<이 컴퓨터 IP>:8000 으로 접속해 측정하면 기록이 이 컴�
 """
 import argparse
 import datetime as dt
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -43,8 +46,16 @@ ROSTER_FILE = '학생명단.xlsx'
 BOOK_FILE = '러닝기록.xlsx'
 JOURNAL_FILE = '백업-기록원본.jsonl'
 EXCLUDED_FILE = '백업-제외목록.json'
+PASS_FILE = '백업-비밀번호(암호화).json'
+STATE_FILE = '백업-기록시간.json'
+SLACK = 5                                   # 기기·서버 시계 차이 허용(초)
+SECRET_FILE = '.토큰키'
 RECORD_HEADERS = ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '랩(초)', '제외', '기록ID']
-NOT_FOUND = '학생명단에서 찾을 수 없어요. 이름과 생년월일을 다시 확인해 주세요.'
+MSG_BAD = '이름 또는 비밀번호가 맞지 않아요.'
+MSG_RELOGIN = '다시 로그인해 주세요.'
+MSG_SAME = '같은 이름의 학생이 있어 구분할 수 없어요. 선생님께 말해 주세요.'
+MSG_LOCKED = '비밀번호를 여러 번 틀렸어요. 10분 뒤에 다시 시도하거나 선생님께 말해 주세요.'
+MAX_FAILS = 10
 LOCKED = f'{BOOK_FILE} 파일이 엑셀에서 열려 있어 저장을 기다리는 중이에요. 파일을 닫으면 자동으로 저장돼요.'
 HEAD_FONT = Font(bold=True)
 HEAD_FILL = PatternFill('solid', fgColor='E8F0FE')
@@ -73,32 +84,34 @@ def as_num(v):
     return int(v) if isinstance(v, str) and v.isdigit() else v
 
 
-def birth_key(v):
-    """생년월일 → YYMMDD. 120305, 20120305, 2012-03-05, 2012.3.5, 날짜 셀 모두 같은 값"""
-    if isinstance(v, (dt.datetime, dt.date)):
-        return v.strftime('%y%m%d')
-    s = cell(v)
-    if not s:
-        return ''
-    parts = [p for p in re.split(r'\D+', s) if p]
-    if len(parts) == 3:
-        return parts[0][-2:].zfill(2) + parts[1].zfill(2)[-2:] + parts[2].zfill(2)[-2:]
-    d = re.sub(r'\D', '', s)
-    if len(d) == 8:
-        d = d[2:]
-    if len(d) == 5:          # 숫자 셀에서 앞자리 0이 빠진 경우 (090101 → 90101)
-        d = '0' + d
-    return d if len(d) == 6 else ''
+def norm_teacher(v):
+    """'김민수', '김 민수', '김민수 선생님', '김민수쌤' 모두 같은 담임으로 인정"""
+    return re.sub(r'(선생님|선생|쌤|샘)$', '', norm_name(v))
+
+
+def student_key(s):
+    return '|'.join((s['grade'], s['cls'], s['num'], s['name']))
+
+
+def make_hash(pw):
+    salt = secrets.token_hex(8)
+    return salt + '$' + hashlib.sha256((salt + pw).encode('utf-8')).hexdigest()
+
+
+def check_hash(pw, stored):
+    salt, _, digest = str(stored).partition('$')
+    return bool(salt and digest) and hmac.compare_digest(
+        hashlib.sha256((salt + pw).encode('utf-8')).hexdigest(), digest)
 
 
 def header_cols(row):
-    c = {'name': -1, 'birth': -1, 'grade': -1, 'cls': -1, 'num': -1}
+    c = {'name': -1, 'homeroom': -1, 'grade': -1, 'cls': -1, 'num': -1}
     for i, v in enumerate(row):
         h = norm_name(v)
         if c['name'] < 0 and re.fullmatch(r'이름|성명|학생명|학생이름', h):
             c['name'] = i
-        elif c['birth'] < 0 and re.search(r'생년월일|생일', h):
-            c['birth'] = i
+        elif c['homeroom'] < 0 and '담임' in h:
+            c['homeroom'] = i
         elif c['grade'] < 0 and h == '학년':
             c['grade'] = i
         elif c['cls'] < 0 and h == '반':
@@ -140,6 +153,10 @@ class Store:
         self.book_path = self.dir / BOOK_FILE
         self.journal_path = self.dir / JOURNAL_FILE
         self.excluded_path = self.dir / EXCLUDED_FILE
+        self.pass_path = self.dir / PASS_FILE
+        self.state_path = self.dir / STATE_FILE
+        self.secret = self._secret()
+        self.fails = {}
         self.lock = threading.RLock()
         self.wake = threading.Event()
         self.records, self.ids, self.excluded = [], set(), set()
@@ -168,16 +185,71 @@ class Store:
             self.excluded = set(json.loads(self.excluded_path.read_text('utf-8')))
         except (OSError, ValueError, TypeError):
             pass
+        try:
+            self.passwords = dict(json.loads(self.pass_path.read_text('utf-8')))
+        except (OSError, ValueError, TypeError):
+            self.passwords = {}
+
+    # ---------- 기록 시간 (선생님이 시작 · 종료) ----------
+    def _state(self):
+        try:
+            st = json.loads(self.state_path.read_text('utf-8'))
+            if isinstance(st, dict):
+                return st
+        except (OSError, ValueError):
+            pass
+        return {'open': False, 'start': 0, 'sessions': []}
+
+    def _set_state(self, st):
+        tmp = self.state_path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(st), 'utf-8')
+        os.replace(tmp, self.state_path)
+
+    def start_rec(self):
+        st = self._state()
+        if not st.get('open'):
+            st.update(open=True, start=time.time())
+            self._set_state(st)
+
+    def stop_rec(self):
+        st = self._state()
+        if st.get('open'):
+            st['sessions'] = (st.get('sessions') or [])[-19:] + [{'start': st['start'], 'end': time.time()}]
+            st['open'] = False
+            self._set_state(st)
+
+    def in_session(self, at):
+        """지금 기록 중이거나, 측정 시각이 지난 기록 시간 안이면(와이파이가 끊겨 늦게 도착한 기록) 받는다"""
+        st = self._state()
+        if st.get('open') and at >= st['start'] - SLACK:
+            return True
+        return any(x['start'] - SLACK <= at <= x['end'] + SLACK for x in st.get('sessions') or [])
+
+    def status(self):
+        st = self._state()
+        return {'ok': True, 'recording': bool(st.get('open')),
+                'since': int(st['start'] * 1000) if st.get('open') else None}
+
+    def _secret(self):
+        path = self.dir / SECRET_FILE
+        try:
+            return path.read_text('utf-8').strip()
+        except OSError:
+            key = secrets.token_hex(32)
+            path.write_text(key, 'utf-8')
+            return key
+
+    def _save_passwords(self):
+        tmp = self.pass_path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(self.passwords, ensure_ascii=False, indent=0), 'utf-8')
+        os.replace(tmp, self.pass_path)
 
     def _make_roster(self):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = '학생명단'
-        ws.append(['학년', '반', '번호', '이름', '생년월일'])
-        ws.append([3, 1, 1, '홍길동', '120305'])
-        for row in ws.iter_rows(min_col=5, max_col=5):
-            for c in row:
-                c.number_format = '@'          # 생년월일 앞자리 0 보존
+        ws.append(['학년', '반', '번호', '이름', '담임'])
+        ws.append([3, 1, 1, '홍길동', '이순신'])
         style_head(ws, 5)
         for col, w in zip('ABCDE', (8, 8, 8, 14, 14)):
             ws.column_dimensions[col].width = w
@@ -209,31 +281,111 @@ class Store:
             raise RosterError(f'{ROSTER_FILE} 을(를) 읽을 수 없어요: {e}')
         for i, row in enumerate(rows[:10]):
             c = header_cols(row)
-            if c['name'] < 0 or c['birth'] < 0:
+            if c['name'] < 0:
                 continue
             out = []
             for r in rows[i + 1:]:
                 get = lambda k: r[c[k]] if 0 <= c[k] < len(r) else None
-                name, birth = norm_name(get('name')), birth_key(get('birth'))
-                if name and birth:
-                    out.append({'name': name, 'birth': birth, 'grade': cell(get('grade')),
-                                'cls': cell(get('cls')), 'num': cell(get('num'))})
+                name = norm_name(get('name'))
+                if name:
+                    s = {'name': name, 'grade': cell(get('grade')), 'cls': cell(get('cls')),
+                         'num': cell(get('num')), 'homeroom': cell(get('homeroom'))}
+                    s['key'] = student_key(s)
+                    out.append(s)
             self._roster = (mtime, out)
             return out
-        raise RosterError(f'{ROSTER_FILE} 첫 줄에 "이름"과 "생년월일" 열이 필요해요.')
+        raise RosterError(f'{ROSTER_FILE} 첫 줄에 "이름" 열이 필요해요.')
 
-    def find(self, p):
-        name, birth = norm_name(p.get('name')), birth_key(p.get('birth'))
-        if not name or not birth:
-            return None
-        return next((s for s in self.roster() if s['name'] == name and s['birth'] == birth), None)
+    # ---------- 로그인 · 비밀번호 ----------
+    def match(self, name, pw):
+        same = [s for s in self.roster() if s['name'] == name]
+        own = [s for s in same if s['key'] in self.passwords and check_hash(pw, self.passwords[s['key']])]
+        temp = [s for s in same if s['key'] not in self.passwords and s['homeroom']
+                and norm_teacher(pw) == norm_teacher(s['homeroom'])]
+        return same, own, temp
+
+    def _failed(self, name):
+        n, until = self.fails.get(name, (0, 0))
+        return n if until > time.time() else 0
+
+    def _fail(self, name):
+        self.fails[name] = (self._failed(name) + 1, time.time() + 600)
+
+    def sign(self, s):
+        msg = s['key'] + '|' + self.passwords.get(s['key'], '')
+        return hmac.new(self.secret.encode(), msg.encode('utf-8'), hashlib.sha256).hexdigest()[:32]
+
+    def token(self, s):
+        return s['key'] + ':' + self.sign(s)
+
+    def from_token(self, t):
+        key, _, sig = str(t or '').rpartition(':')
+        s = next((x for x in self.roster() if x['key'] == key and key in self.passwords), None)
+        return s if s and hmac.compare_digest(self.sign(s), sig) else None
+
+    def info(self, s):
+        return {'name': s['name'], 'label': label(s)}
+
+    def login(self, p):
+        name, pw = norm_name(p.get('name')), str(p.get('password') or '').strip()
+        if not name or not pw:
+            return {'ok': False, 'error': MSG_BAD}
+        if self._failed(name) >= MAX_FAILS:
+            return {'ok': False, 'error': MSG_LOCKED}
+        same, own, temp = self.match(name, pw)
+        if len(own) + len(temp) > 1:
+            return {'ok': False, 'error': MSG_SAME}
+        if own:
+            self.fails.pop(name, None)
+            return {'ok': True, 'student': self.info(own[0]), 'token': self.token(own[0]), 'records': self.summary(own[0])}
+        if temp:
+            self.fails.pop(name, None)
+            return {'ok': True, 'mustChange': True, 'student': self.info(temp[0])}
+        self._fail(name)
+        if same and all(s['key'] not in self.passwords and not s['homeroom'] for s in same):
+            return {'ok': False, 'error': '학생명단에 담임 선생님 성함이 비어 있어요. 선생님께 말해 주세요.'}
+        return {'ok': False, 'error': MSG_BAD}
+
+    def set_password(self, p):
+        name, pw = norm_name(p.get('name')), str(p.get('password') or '').strip()
+        nxt = str(p.get('newPassword') or '').strip()
+        if not name or not pw:
+            return {'ok': False, 'error': MSG_BAD}
+        if not 4 <= len(nxt) <= 20:
+            return {'ok': False, 'error': '새 비밀번호는 4~20자로 만들어 주세요.'}
+        if self._failed(name) >= MAX_FAILS:
+            return {'ok': False, 'error': MSG_LOCKED}
+        same, own, temp = self.match(name, pw)
+        if len(own) + len(temp) > 1:
+            return {'ok': False, 'error': MSG_SAME}
+        s = (own or temp or [None])[0]
+        if not s:
+            self._fail(name)
+            return {'ok': False, 'error': MSG_BAD}
+        if s['homeroom'] and norm_teacher(nxt) == norm_teacher(s['homeroom']):
+            return {'ok': False, 'error': '담임 선생님 성함이 아닌 나만 아는 비밀번호로 만들어 주세요.'}
+        for x in same:                        # 같은 이름의 다른 반 학생과 비밀번호까지 같으면 구분 불가
+            if x is not s and ((x['key'] in self.passwords and check_hash(nxt, self.passwords[x['key']]))
+                               or (x['key'] not in self.passwords and x['homeroom']
+                                   and norm_teacher(nxt) == norm_teacher(x['homeroom']))):
+                return {'ok': False, 'error': '이 비밀번호는 쓸 수 없어요. 다른 비밀번호로 만들어 주세요.'}
+        self.passwords[s['key']] = make_hash(nxt)
+        self._save_passwords()
+        self.fails.pop(name, None)
+        return {'ok': True, 'student': self.info(s), 'token': self.token(s), 'records': self.summary(s)}
+
+    def reset_password(self, key):
+        if self.passwords.pop(str(key or ''), None) is None:
+            return {'ok': False, 'error': '이미 초기화된 학생이에요.'}
+        self._save_passwords()
+        return self.board()
 
     # ---------- 기록 ----------
     def active(self):
         return [r for r in self.records if r['id'] not in self.excluded]
 
     def summary(self, st):
-        mine = [r for r in self.active() if r['name'] == st['name'] and r['birth'] == st['birth']]
+        mine = [r for r in self.active() if student_key(r) == st['key']]
         best = {}
         for r in mine:
             b = best.get(r['course'])
@@ -251,7 +403,7 @@ class Store:
                 courses.append(r['course'])
         stats = {}
         for r in recs:
-            s = stats.setdefault((r['name'], r['birth']), {'best': {}, 'count': 0, 'last': ''})
+            s = stats.setdefault(student_key(r), {'best': {}, 'count': 0, 'last': ''})
             s['count'] += 1
             s['last'] = max(s['last'], r['at'])
             if r['course'] not in s['best'] or r['sec'] < s['best'][r['course']]:
@@ -262,15 +414,16 @@ class Store:
             roster = []
         rows = []
         for st in roster:
-            s = stats.get((st['name'], st['birth']), {'best': {}, 'count': 0, 'last': ''})
+            s = stats.get(st['key'], {'best': {}, 'count': 0, 'last': ''})
             rows.append({'grade': st['grade'], 'cls': st['cls'], 'num': st['num'], 'name': st['name'],
+                         'key': st['key'], 'hasPassword': st['key'] in self.passwords,
                          'best': s['best'], 'count': s['count'], 'last': s['last']})
         return courses, rows
 
     def save(self, p):
-        st = self.find(p)
+        st = self.from_token(p.get('token'))
         if not st:
-            return {'ok': False, 'error': NOT_FOUND}
+            return {'ok': False, 'relogin': True, 'error': MSG_RELOGIN}
         course = str(p.get('course') or '').strip()[:40]
         try:
             sec = round(float(p.get('sec')), 2)
@@ -296,8 +449,11 @@ class Store:
             when = now
         if when > now or (now - when).days > 30:
             when = now
+        if not self.in_session(when.timestamp()):
+            return {'ok': False, 'closed': True,
+                    'error': '기록 시간이 아니라 저장하지 않았어요. 선생님이 [기록 시작]을 누르면 저장돼요.'}
 
-        rec = {'id': rid, 'at': when.isoformat(timespec='seconds'), 'name': st['name'], 'birth': st['birth'],
+        rec = {'id': rid, 'at': when.isoformat(timespec='seconds'), 'name': st['name'],
                'grade': st['grade'], 'cls': st['cls'], 'num': st['num'], 'course': course, 'sec': sec,
                'target': target, 'result': {'ok': '성공', 'fail': '실패'}.get(p.get('result'), ''), 'laps': laps}
         with open(self.journal_path, 'a', encoding='utf-8') as f:
@@ -437,15 +593,28 @@ class Store:
     # ---------- 선생님 화면 ----------
     def board(self):
         courses, best = self.best_table()
-        recent = [{'id': r['id'], 'at': short_time(r['at']), 'who': label(r), 'name': r['name'],
-                   'course': r['course'], 'sec': r['sec'], 'result': r['result'], 'excluded': r['id'] in self.excluded}
-                  for r in reversed(self.records[-60:])]
+        st = self._state()
+        last = (st.get('sessions') or [None])[-1]
+        since = st['start'] if st.get('open') else (last['start'] if last else 0)
+        until = float('inf') if st.get('open') or not last else last['end'] + SLACK
+        recent = []
+        for r in reversed(self.records):
+            t = dt.datetime.fromisoformat(r['at']).timestamp()
+            if since - SLACK <= t <= until:
+                recent.append({'id': r['id'], 'at': r['at'][11:19], 'who': label(r), 'name': r['name'],
+                               'course': r['course'], 'sec': r['sec'], 'result': r['result'],
+                               'excluded': r['id'] in self.excluded})
+            if len(recent) >= 300:
+                break
         try:
             self.roster()
             roster_error = ''
         except RosterError as e:
             roster_error = str(e)
-        return {'ok': True, 'courses': courses, 'best': best, 'recent': recent, 'total': len(self.active()),
+        return {'ok': True, 'mode': 'local', 'recording': bool(st.get('open')),
+                'since': int(st['start'] * 1000) if st.get('open') else None,
+                'lastSession': {'start': int(last['start'] * 1000), 'end': int(last['end'] * 1000)} if last else None,
+                'courses': courses, 'best': best, 'recent': recent, 'total': len(self.active()),
                 'pending': self.version != self.written_version, 'bookError': self.book_error,
                 'rosterError': roster_error, 'savedAt': self.saved_at,
                 'files': {'roster': str(self.roster_path), 'book': str(self.book_path), 'dir': str(self.dir)},
@@ -473,23 +642,37 @@ class Store:
         with self.lock:
             try:
                 if action == 'login':
-                    st = self.find(p)
-                    if not st:
-                        return {'ok': False, 'error': NOT_FOUND}
-                    return {'ok': True, 'student': {'name': st['name'], 'label': label(st)}, 'records': self.summary(st)}
+                    return self.login(p)
+                if action == 'setPassword':
+                    return self.set_password(p)
                 if action == 'records':
-                    st = self.find(p)
-                    return {'ok': True, 'records': self.summary(st)} if st else {'ok': False, 'error': NOT_FOUND}
+                    st = self.from_token(p.get('token'))
+                    return ({'ok': True, 'records': self.summary(st)} if st
+                            else {'ok': False, 'relogin': True, 'error': MSG_RELOGIN})
                 if action == 'save':
                     return self.save(p)
-                if action in ('board', 'exclude', 'open'):
+                if action == 'status':
+                    return self.status()
+                if action in ('teacherLogin', 'teacher'):
+                    # 로컬 서버: 선생님 페이지는 서버를 켠 컴퓨터에서만 (비밀번호 대신 컴퓨터로 확인)
                     if not local:
-                        return {'ok': False, 'error': '선생님 컴퓨터에서만 쓸 수 있어요.'}
-                    if action == 'board':
-                        return self.board()
-                    if action == 'exclude':
+                        return {'ok': False, 'error': '선생님 페이지는 서버를 켠 컴퓨터에서 열어 주세요.'}
+                    if action == 'teacherLogin':
+                        return {'ok': True, 'token': 'local'}
+                    op = p.get('op')
+                    if op == 'start':
+                        self.start_rec()
+                    elif op == 'stop':
+                        self.stop_rec()
+                    elif op == 'exclude':
                         return self.set_excluded(str(p.get('id') or ''), bool(p.get('on')))
-                    return self.open_path(p.get('which'))
+                    elif op == 'resetPassword':
+                        return self.reset_password(p.get('key'))
+                    elif op == 'open':
+                        return self.open_path(p.get('which'))
+                    elif op != 'board':
+                        return {'ok': False, 'error': '알 수 없는 요청입니다.'}
+                    return self.board()
                 if not action or action == 'ping':
                     return {'ok': True, 'app': 'running-timer', 'mode': 'local'}
                 return {'ok': False, 'error': '알 수 없는 요청입니다.'}
@@ -680,7 +863,7 @@ def main():
     for a in ADDRESSES or ['(네트워크 연결을 확인하세요)']:
         print('    ' + a)
     print(f' 이 컴퓨터에서:      http://localhost:{port}')
-    print(f' 선생님 관리 화면:   http://localhost:{port}/teacher.html')
+    print(f' 선생님 페이지:     http://localhost:{port}/teacher.html')
     print(f' 학생명단:  {STORE.roster_path}')
     print(f' 기록 파일: {STORE.book_path}')
     print(' 끄려면 이 창을 닫거나 Ctrl+C')

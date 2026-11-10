@@ -13,19 +13,42 @@
  *   선생님 페이지(teacher.html)나 시트 메뉴에서 [기록 시작]을 누른 동안만 기록이 저장된다
  *   선생님 페이지 비밀번호는 시트 메뉴 [러닝 타이머 → 선생님 비밀번호 정하기]에서 정한다
  *
+ * 평가 (평가기준 탭에서 바꿈)
+ *   한 기록 시간(기록 시작~종료) 안의 평가 코스 연습 횟수 → 연습 등급 (기본 5회 A, 4회 B, 3회 C, 그 이하 D)
+ *   그 시간의 우수기록 3개 합산 → 기록 등급 (남녀 따로 초 기준, 우수기록이 모자라면 D)
+ *
  * 시트 구성
- *   학생명단 : 교사가 입력. 첫 줄에 "이름", "담임" 열 ("학년", "반", "번호"는 있으면 사용)
+ *   학생명단 : 교사가 입력. 첫 줄에 "이름", "담임" 열 ("학년", "반", "번호", "성별"은 있으면 사용)
  *             "비밀번호(자동)" 열은 학생이 비밀번호를 만들면 암호화된 값이 자동으로 채워짐
  *   기록     : 측정할 때마다 한 줄씩 자동 추가
  *   최고기록 : 학생 × 코스별 최고 기록, 저장할 때마다 자동으로 다시 계산
+ *   평가기준 : 평가 코스 · 무효 기록 · 등급 기준 (교사가 수정)
+ *   평가     : 학생별 연습 횟수 · 연습 등급 · 우수기록 · 합산 · 기록 등급, 저장할 때마다 자동 계산
  */
 
 const ROSTER_SHEET = '학생명단';
 const RECORD_SHEET = '기록';
 const BEST_SHEET   = '최고기록';
+const CRITERIA_SHEET = '평가기준';
+const EVAL_SHEET   = '평가';
 const PASS_HEADER  = '비밀번호(자동)';
 const COURSES = ['301번 버스', '지그재그', '이어달리기', '장애물'];
-const RECORD_HEADERS = ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '랩(초)', '기록ID', '제외'];
+const RECORD_HEADERS = ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '랩(초)', '기록ID', '제외', '기록시간'];
+const AUTO_SHEETS = [RECORD_SHEET, BEST_SHEET, CRITERIA_SHEET, EVAL_SHEET];
+
+// 평가기준 탭의 처음 내용 (합산 초 기준은 예시: 학교 기준에 맞게 바꿔서 쓰기)
+const DEFAULT_CRITERIA = [
+  ['항목', '남', '여', '설명'],
+  ['평가 코스', '장애물', '', '이 코스 기록만 평가하고, 학생 화면도 이 코스만 열려요. 비우면 모든 코스'],
+  ['무효 기록(초 미만)', 5, '', '이보다 짧은 기록(실수로 바로 정지)은 연습 횟수와 우수기록에서 빼요'],
+  ['우수기록 개수', 3, '', '빠른 기록 몇 개를 합산할지'],
+  ['연습 A (회 이상)', 5, '', '한 기록 시간(기록 시작~종료) 안의 연습 횟수'],
+  ['연습 B (회 이상)', 4, '', ''],
+  ['연습 C (회 이상)', 3, '', '이보다 적으면 D'],
+  ['합산 A (초 이하)', 33, 36, '예시 값이에요. 학교 기준에 맞게 바꿔 주세요'],
+  ['합산 B (초 이하)', 36, 39, ''],
+  ['합산 C (초 이하)', 39, 42, '이보다 느리거나 우수기록이 모자라면 D']
+];
 
 const MSG_BAD     = '이름 또는 비밀번호가 맞지 않아요.';
 const MSG_RELOGIN = '다시 로그인해 주세요.';
@@ -50,7 +73,7 @@ function route_(p) {
     if (p.action === 'setPassword') return setPassword_(p);
     if (p.action === 'save')        return save_(p);
     if (p.action === 'records')     return records_(p);
-    if (p.action === 'status')      return Object.assign({ ok: true }, statusOut_());
+    if (p.action === 'status')      return Object.assign({ ok: true, course: criteria_().course }, statusOut_());
     if (p.action === 'teacherLogin') return teacherLogin_(p);
     if (p.action === 'teacher')     return teacher_(p);
     if (!p.action || p.action === 'ping') return { ok: true, app: 'running-timer' };
@@ -165,9 +188,11 @@ function save_(p) {
   try {
     const sh = recordSheet_();
     if (id && isDuplicate_(sh, id)) return { ok: true, duplicate: true, records: summary_(s) };
-    sh.appendRow([when, s.grade, s.cls, s.num, s.name, course, sec, target, result, laps, id]);
+    const session = sessionOf_(when.getTime());
+    sh.appendRow([when, s.grade, s.cls, s.num, s.name, course, sec, target, result, laps, id, '', session ? new Date(session) : '']);
     sh.getRange(sh.getLastRow(), 7).setNumberFormat('0.00');
     rebuildBest_();
+    rebuildEval_();
   } finally {
     lock.releaseLock();
   }
@@ -179,7 +204,7 @@ function save_(p) {
 function roster_() {
   const ss = SpreadsheetApp.getActive();
   let sh = ss.getSheetByName(ROSTER_SHEET);
-  if (!sh) sh = ss.getSheets().filter(x => [RECORD_SHEET, BEST_SHEET].indexOf(x.getName()) < 0)[0];
+  if (!sh) sh = ss.getSheets().filter(x => AUTO_SHEETS.indexOf(x.getName()) < 0)[0];
   if (!sh) throw new Error('"학생명단" 시트가 없습니다.');
 
   const values = sh.getDataRange().getValues();
@@ -193,7 +218,7 @@ function roster_() {
       const name = normName_(row[c.name]);
       if (!name) continue;
       const s = { row: i + 1, name: name, grade: cell_(row, c.grade), cls: cell_(row, c.cls), num: cell_(row, c.num),
-                  homeroom: cell_(row, c.homeroom), hash: cell_(row, c.pass) };
+                  sex: cell_(row, c.sex), homeroom: cell_(row, c.homeroom), hash: cell_(row, c.pass) };
       s.key = key_(s);
       list.push(s);
     }
@@ -203,7 +228,7 @@ function roster_() {
 }
 
 function headerCols_(row) {
-  const c = { name: -1, grade: -1, cls: -1, num: -1, homeroom: -1, pass: -1 };
+  const c = { name: -1, grade: -1, cls: -1, num: -1, sex: -1, homeroom: -1, pass: -1 };
   row.forEach((v, i) => {
     const h = String(v).replace(/\s/g, '');
     if (c.name < 0 && /^(이름|성명|학생명|학생이름)$/.test(h)) c.name = i;
@@ -212,6 +237,7 @@ function headerCols_(row) {
     else if (c.grade < 0 && h === '학년') c.grade = i;
     else if (c.cls < 0 && h === '반') c.cls = i;
     else if (c.num < 0 && /^(번호|번)$/.test(h)) c.num = i;
+    else if (c.sex < 0 && h === '성별') c.sex = i;
   });
   return c;
 }
@@ -246,6 +272,15 @@ function recordSheet_() {
     sh.getRange('A:A').setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sh.getRange('G:H').setNumberFormat('0.00');
   }
+  // 예전에 만든 시트에 없는 머리글(제외 · 기록시간)을 채워 둔다
+  const width = Math.max(sh.getLastColumn(), 1);
+  const h = sh.getRange(1, 1, 1, width).getValues()[0].map(x => String(x).trim());
+  RECORD_HEADERS.forEach((name, i) => {
+    if (h.indexOf(name) < 0 && !h[i]) {
+      sh.getRange(1, i + 1).setValue(name).setFontWeight('bold').setBackground('#e8f0fe');
+      h[i] = name;
+    }
+  });
   return sh;
 }
 
@@ -263,7 +298,8 @@ function recordRows_(withExcluded) {
   const v = sh.getDataRange().getValues();
   const h = v[0].map(x => String(x).trim());
   const I = {};
-  ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '기록ID', '제외'].forEach(n => { I[n] = h.indexOf(n); });
+  ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '기록ID', '제외', '기록시간'].forEach(n => { I[n] = h.indexOf(n); });
+  const st = state_();
   return v.slice(1).map(r => {
     const s = { grade: cell_(r, I['학년']), cls: cell_(r, I['반']), num: cell_(r, I['번호']), name: normName_(r[I['이름']]) };
     return {
@@ -274,7 +310,10 @@ function recordRows_(withExcluded) {
       target: Number(r[I['목표(초)']]) || 0,
       result: String(r[I['결과']] || ''),
       id: String(r[I['기록ID']] || ''),
-      excluded: I['제외'] >= 0 && String(r[I['제외']] || '').trim() !== ''
+      excluded: I['제외'] >= 0 && String(r[I['제외']] || '').trim() !== '',
+      // 어느 기록 시간(기록 시작 시각)에 잰 기록인지
+      session: r[I['기록시간']] instanceof Date ? r[I['기록시간']].getTime()
+             : (r[I['측정일시']] instanceof Date ? sessionOf_(r[I['측정일시']].getTime(), st) : 0)
     };
   }).filter(r => r.name && r.course && r.sec > 0 && (withExcluded || !r.excluded));
 }
@@ -292,7 +331,26 @@ function summary_(s) {
     at: r.at ? Utilities.formatDate(r.at, tz, 'M/d HH:mm') : '',
     course: r.course, sec: r.sec, result: r.result
   }));
-  return { count: mine.length, best: best, recent: recent };
+  return { count: mine.length, best: best, recent: recent, practice: practice_(s, mine) };
+}
+
+// 학생 화면용: 지금(또는 마지막) 기록 시간의 평가 코스 연습 횟수와 우수기록 합산 (등급은 보여 주지 않음)
+function practice_(s, mine) {
+  const cfg = criteria_();
+  const st = state_();
+  const valid = mine.filter(x => (!cfg.course || x.course === cfg.course) && x.sec >= cfg.minSec);
+  let session = st.open ? st.start : 0;
+  if (!session) {                                     // 기록 시간이 끝났으면 이 학생이 가장 많이 뛴 시간
+    const n = {};
+    valid.forEach(x => { n[x.session] = (n[x.session] || 0) + 1; });
+    Object.keys(n).forEach(k => { if (!session || n[k] > n[session] || (n[k] === n[session] && +k > session)) session = +k; });
+  }
+  const runs = valid.filter(x => x.session === session);
+  const top = runs.map(x => x.sec).sort((a, b) => a - b).slice(0, cfg.topN);
+  return {
+    course: cfg.course, open: !!st.open, count: runs.length, topN: cfg.topN, best: top,
+    sum: top.length >= cfg.topN ? round2_(top.reduce((a, b) => a + b, 0)) : null, minSec: cfg.minSec
+  };
 }
 
 /* ================= 최고기록 (교사용 한눈에 보기) ================= */
@@ -356,7 +414,7 @@ function startRec_() {
 function stopRec_() {
   const s = state_();
   if (s.open) {
-    s.sessions = (s.sessions || []).concat([{ start: s.start, end: Date.now() }]).slice(-20);
+    s.sessions = (s.sessions || []).concat([{ start: s.start, end: Date.now() }]).slice(-100);
     s.open = false;
     setState_(s);
   }
@@ -373,6 +431,103 @@ function inSession_(at) {
 function statusOut_() {
   const s = state_();
   return { recording: !!s.open, since: s.open ? s.start : null };
+}
+
+// 이 시각이 속한 기록 시간의 시작 시각 (없으면 0)
+function sessionOf_(at, st) {
+  st = st || state_();
+  const slack = 5000;
+  if (st.open && at >= st.start - slack) return st.start;
+  const hit = (st.sessions || []).filter(x => at >= x.start - slack && at <= x.end + slack).pop();
+  return hit ? hit.start : 0;
+}
+
+/* ================= 평가 ================= */
+
+function criteriaSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(CRITERIA_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(CRITERIA_SHEET);
+    sh.getRange(1, 1, DEFAULT_CRITERIA.length, 4).setValues(DEFAULT_CRITERIA);
+    sh.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#e8f0fe');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(1, 150); sh.setColumnWidth(4, 520);
+  }
+  return sh;
+}
+
+// 평가기준 탭 읽기 (항목 이름의 앞부분으로 찾으므로 줄 순서는 바뀌어도 됨)
+function criteria_() {
+  const rows = criteriaSheet_().getDataRange().getValues();
+  const find = label => rows.filter(r => normName_(r[0]).indexOf(normName_(label)) === 0)[0] || [];
+  const num = (v, d) => (v === '' || v == null || isNaN(Number(v))) ? d : Number(v);
+  const cut = col => ({
+    A: num(find('합산 A')[col], num(find('합산 A')[1], 33)),
+    B: num(find('합산 B')[col], num(find('합산 B')[1], 36)),
+    C: num(find('합산 C')[col], num(find('합산 C')[1], 39))
+  });
+  const course = find('평가 코스');
+  return {
+    course: course.length ? String(course[1] || '').trim() : '장애물',
+    minSec: num(find('무효 기록')[1], 5),
+    topN: Math.max(1, Math.round(num(find('우수기록 개수')[1], 3))),
+    practice: { A: num(find('연습 A')[1], 5), B: num(find('연습 B')[1], 4), C: num(find('연습 C')[1], 3) },
+    cut: { '남': cut(1), '여': cut(2) }
+  };
+}
+
+function round2_(n) { return Math.round(n * 100) / 100; }
+
+// 학생별 평가: 그 학생이 가장 많이 뛴 기록 시간(한 반 = 한 시간) 안의 유효한 평가 코스 기록으로 계산
+function evaluate_(r, rows, cfg) {
+  const by = {};
+  rows.filter(x => !x.excluded && (!cfg.course || x.course === cfg.course) && x.sec >= cfg.minSec)
+      .forEach(x => { (by[x.key] = by[x.key] || []).push(x); });
+  return r.list.map(st => {
+    const sess = {};
+    (by[st.key] || []).forEach(x => { (sess[x.session] = sess[x.session] || []).push(x); });
+    let pick = null;
+    Object.keys(sess).forEach(k => {
+      if (pick === null || sess[k].length > sess[pick].length || (sess[k].length === sess[pick].length && +k > +pick)) pick = k;
+    });
+    const runs = pick === null ? [] : sess[pick];
+    const count = runs.length;
+    const best = runs.map(x => x.sec).sort((a, b) => a - b).slice(0, cfg.topN);
+    const sum = best.length >= cfg.topN ? round2_(best.reduce((a, b) => a + b, 0)) : null;
+    const cut = cfg.cut[st.sex === '여' ? '여' : '남'];
+    return {
+      grade: st.grade, cls: st.cls, num: st.num, sex: st.sex, name: st.name, key: st.key,
+      session: pick === null ? 0 : +pick, count: count,
+      practice: count >= cfg.practice.A ? 'A' : count >= cfg.practice.B ? 'B' : count >= cfg.practice.C ? 'C' : 'D',
+      best: best, sum: sum,
+      record: sum === null ? 'D' : sum <= cut.A ? 'A' : sum <= cut.B ? 'B' : sum <= cut.C ? 'C' : 'D'
+    };
+  });
+}
+
+function rebuildEval_() {
+  const ss = SpreadsheetApp.getActive();
+  const cfg = criteria_();
+  const list = evaluate_(roster_(), recordRows_(), cfg);
+  const tops = []; for (let i = 1; i <= cfg.topN; i++) tops.push('우수' + i + '(초)');
+  const header = ['학년', '반', '번호', '성별', '이름', '평가 시간', '연습 횟수', '연습 등급'].concat(tops, ['합산(초)', '기록 등급']);
+  const out = [header].concat(list.map(e => [e.grade, e.cls, e.num, e.sex, e.name, e.session ? new Date(e.session) : '',
+    e.count, e.practice].concat(tops.map((_, i) => e.best[i] != null ? e.best[i] : ''), [e.sum == null ? '' : e.sum, e.record])));
+  const sh = ss.getSheetByName(EVAL_SHEET) || ss.insertSheet(EVAL_SHEET);
+  sh.clear();
+  sh.getRange(1, 1, out.length, header.length).setValues(out);
+  sh.getRange(1, 1, 1, header.length).setFontWeight('bold').setBackground('#e8f0fe');
+  sh.setFrozenRows(1);
+  if (out.length > 1) {
+    sh.getRange(2, 6, out.length - 1, 1).setNumberFormat('m/d hh:mm');
+    sh.getRange(2, 9, out.length - 1, cfg.topN + 1).setNumberFormat('0.00');
+  }
+}
+
+function rebuildEval() {
+  rebuildEval_();
+  SpreadsheetApp.getActive().toast('평가를 다시 계산했습니다.', '러닝 타이머', 5);
 }
 
 /* ================= 선생님 페이지 ================= */
@@ -426,7 +581,11 @@ function board_() {
       course: x.course, sec: x.sec, result: x.result, excluded: x.excluded
     }));
   const d = bestData_(r, all.filter(x => !x.excluded));
+  const cfg = criteria_();
   return {
+    evaluation: { course: cfg.course, minSec: cfg.minSec, topN: cfg.topN, practice: cfg.practice, cut: cfg.cut,
+                  list: evaluate_(r, all, cfg).map(e => Object.assign(e, {
+                    session: e.session ? Utilities.formatDate(new Date(e.session), tz, 'M/d HH:mm') : '' })) },
     ok: true, mode: 'sheet', recording: !!st.open, since: st.open ? st.start : null,
     lastSession: last || null, courses: d.courses,
     best: d.list.map(b => ({ grade: b.grade, cls: b.cls, num: b.num, name: b.name, key: b.key,
@@ -454,6 +613,7 @@ function setExcluded_(id, on) {
     if (ids[i][0] === id) { sh.getRange(i + 2, exCol).setValue(on ? 'O' : ''); break; }
   }
   rebuildBest_();
+  rebuildEval_();
 }
 
 /* ================= 시트 메뉴 ================= */
@@ -468,6 +628,7 @@ function onOpen() {
     .addSeparator()
     .addItem('선택한 학생 비밀번호 초기화', 'resetSelected')
     .addItem('최고기록 다시 계산', 'rebuildBest')
+    .addItem('평가 다시 계산', 'rebuildEval')
     .addToUi();
 }
 
@@ -488,7 +649,9 @@ function setup() {
     sh.setFrozenRows(1);
   }
   recordSheet_();
+  criteriaSheet_();
   rebuildBest_();
+  rebuildEval_();
   ss.toast('학생명단에 학생과 담임 선생님 성함을 입력한 뒤 웹 앱으로 배포하세요.', '러닝 타이머 준비 완료', 8);
 }
 

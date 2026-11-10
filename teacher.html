@@ -99,6 +99,15 @@
   .tag.warn{background:var(--warn-bg); color:var(--warn)}
   .empty{padding:18px 0 4px; color:var(--ink-soft); font-size:14px; font-weight:600}
   .more{margin-top:12px}
+  .rule{margin:0 0 12px; font-size:13px; font-weight:600; color:var(--ink-soft); line-height:1.6}
+  .rule b{color:var(--ink)}
+  .dist{display:flex; gap:14px; flex-wrap:wrap; margin:0 0 12px; font-size:13px; font-weight:700; color:var(--ink-soft)}
+  .dist span b{font-family:var(--mono); color:var(--ink)}
+  .g{display:inline-grid; place-items:center; width:28px; height:28px; border-radius:9px; font-weight:800; font-size:14px}
+  .g.A{background:var(--ok-bg); color:var(--ok)}
+  .g.B{background:rgba(31,111,235,.12); color:var(--accent)}
+  .g.C{background:var(--warn-bg); color:var(--warn)}
+  .g.D{background:var(--bad-bg); color:var(--bad)}
 
   @media (max-width:860px){ .grid{grid-template-columns:1fr} .join{flex-direction:column; align-items:flex-start} .rec__btn{width:100%} }
 </style>
@@ -152,6 +161,21 @@
     <section class="card">
       <div class="row"><h2 id="recentTitle">이번 시간 기록</h2><span id="recentSum"></span></div>
       <div class="tablewrap"><table id="recent"></table></div>
+    </section>
+
+    <section class="card" id="evalCard" hidden>
+      <div class="row">
+        <h2 id="evalTitle">평가</h2>
+        <div class="filters">
+          <select id="ecls" aria-label="평가 반 선택"></select>
+          <select id="esort" aria-label="정렬">
+            <option value="">번호순</option><option value="count">연습 적은 순</option><option value="sum">합산 빠른 순</option>
+          </select>
+        </div>
+      </div>
+      <p class="rule" id="evalRule"></p>
+      <div class="dist" id="evalDist"></div>
+      <div class="tablewrap"><table id="eval"></table></div>
     </section>
 
     <section class="card">
@@ -261,6 +285,7 @@
     paintRec();
     if (mode === 'local') paintLocal(d);
     paintRecent();
+    paintEval();
     paintBest();
   }
 
@@ -327,16 +352,54 @@
 
   function classOf(b){ return [b.grade, b.cls].filter(Boolean).join('-'); }
 
+  function fillClasses(sel, list){
+    const classes = [...new Set(list.map(classOf))].filter(Boolean);
+    const want = classes.join('|');
+    if (sel.dataset.opts === want) return;
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">전체 반</option>' + classes.map(c => `<option value="${esc(c)}">${esc(c)}반</option>`).join('');
+    sel.value = classes.includes(keep) ? keep : '';
+    sel.dataset.opts = want;
+  }
+
+  // 평가: 한 기록 시간 안의 연습 횟수 → 연습 등급, 우수기록 합산 → 기록 등급 (기준은 구글 시트 '평가기준' 탭)
+  function paintEval(){
+    const ev = data.evaluation;
+    $('evalCard').hidden = !ev;
+    if (!ev) return;
+    $('evalTitle').textContent = `평가 · ${ev.course || '모든 코스'}`;
+    const c = ev.cut, pr = ev.practice;
+    $('evalRule').innerHTML =
+      `연습 등급: <b>${pr.A}회 이상 A</b> · ${pr.B}회 B · ${pr.C}회 C · 그보다 적으면 D &nbsp;|&nbsp; ` +
+      `기록 등급(우수 ${ev.topN}개 합산): 남 <b>A ≤ ${c['남'].A}</b> · B ≤ ${c['남'].B} · C ≤ ${c['남'].C}초, ` +
+      `여 <b>A ≤ ${c['여'].A}</b> · B ≤ ${c['여'].B} · C ≤ ${c['여'].C}초 &nbsp;|&nbsp; ${ev.minSec}초 미만 기록은 무효. ` +
+      `기준은 구글 시트 <b>평가기준</b> 탭에서 바꿔요.`;
+    const sel = $('ecls');
+    fillClasses(sel, ev.list);
+    let list = ev.list.filter(e => !sel.value || classOf(e) === sel.value);
+    const sort = $('esort').value;
+    if (sort === 'count') list = list.slice().sort((a, b) => a.count - b.count);
+    if (sort === 'sum') list = list.slice().sort((a, b) => (a.sum == null) - (b.sum == null) || a.sum - b.sum);
+    const n = (k, g) => list.filter(e => e[k] === g).length;
+    $('evalDist').innerHTML = list.length
+      ? `<span>연습 등급 ${['A','B','C','D'].map(g => `${g} <b>${n('practice', g)}</b>`).join(' · ')}</span>` +
+        `<span>기록 등급 ${['A','B','C','D'].map(g => `${g} <b>${n('record', g)}</b>`).join(' · ')}</span>`
+      : '';
+    const tops = Array.from({ length: ev.topN }, (_, i) => `<th class="n">우수${i + 1}</th>`).join('');
+    $('eval').innerHTML = list.length
+      ? `<thead><tr><th>반</th><th>번호</th><th>이름</th><th>성별</th><th>평가 시간</th><th class="n">연습</th><th>연습 등급</th>${tops}<th class="n">합산</th><th>기록 등급</th></tr></thead><tbody>` +
+        list.map(e => `<tr><td class="dim">${esc(classOf(e))}</td><td class="dim">${esc(e.num)}</td><td><b>${esc(e.name)}</b></td><td class="dim">${esc(e.sex)}</td>` +
+          `<td class="dim">${esc(e.session || '—')}</td><td class="n">${e.count}회</td><td><span class="g ${e.practice}">${e.practice}</span></td>` +
+          Array.from({ length: ev.topN }, (_, i) => `<td class="n">${e.best[i] != null ? sec(e.best[i]) : '<span class="dim">—</span>'}</td>`).join('') +
+          `<td class="n"><b>${e.sum != null ? sec(e.sum) : '<span class="dim">—</span>'}</b></td><td><span class="g ${e.record}">${e.record}</span></td></tr>`).join('') + '</tbody>'
+      : '<tbody><tr><td class="empty">학생이 없어요.</td></tr></tbody>';
+  }
+  $('ecls').addEventListener('change', paintEval);
+  $('esort').addEventListener('change', paintEval);
+
   function paintBest(){
     const sel = $('cls');
-    const classes = [...new Set(data.best.map(classOf))].filter(Boolean);
-    const want = ['', ...classes].join('|');
-    if (sel.dataset.opts !== want) {
-      const keep = sel.value;
-      sel.innerHTML = '<option value="">전체 반</option>' + classes.map(c => `<option value="${esc(c)}">${esc(c)}반</option>`).join('');
-      sel.value = classes.includes(keep) ? keep : '';
-      sel.dataset.opts = want;
-    }
+    fillClasses(sel, data.best);
     const q = $('q').value.replace(/\s/g, '');
     const list = data.best.filter(b => (!sel.value || classOf(b) === sel.value) && (!q || b.name.includes(q)));
     const courses = data.courses || [];

@@ -435,7 +435,7 @@
         <p class="lede">주자 4명이 <b data-d>50</b>m씩, 바통을 넘겨 모두 <b>200</b>m. 팀 목표 <b data-t>10</b>초.<br>첫 주자 출발과 함께 시작하고, 마지막 주자가 결승선을 통과하면 정지를 누르세요.</p>
         <div class="chips">
           <span>4 × <b data-d>50</b>m 이어달리기</span>
-          <span>팀 목표 <b data-t>10</b>초 이내</span>
+          <span>팀 목표 <b data-t>10</b>초 미만</span>
           <span>랩 버튼으로 주자별 기록</span>
         </div>
       </div>
@@ -588,7 +588,16 @@
   document.getElementById('skip').addEventListener('click', () => { clip.pause(); reveal(); });
 
   /* ================= STOPWATCH ================= */
-  const TARGET_MS = (parseFloat(document.querySelector('[data-t]').textContent) || 30) * 1000;
+  let TARGET_MS = (parseFloat(document.querySelector('[data-t]').textContent) || 30) * 1000;
+  const fmtSec = n => String(Math.round(n * 100) / 100);
+  // 성공 기준을 학생에 맞게 바꾸기 (student.js: 평가 코스면 그 학생의 60점 기준, 남 7초 · 여 9초)
+  document.addEventListener('run:target', e => {
+    const sec = e.detail && Number(e.detail.sec);
+    if (!(sec > 0) || sec * 1000 === TARGET_MS || running) return;
+    TARGET_MS = sec * 1000;
+    document.querySelectorAll('[data-t]').forEach(el => { el.textContent = fmtSec(sec); });
+    paint();
+  });
   let running = false, result = '', base = 0, mark = 0, raf = 0, laps = [];
 
   const pad = (n, w = 2) => String(n).padStart(w, '0');
@@ -625,7 +634,7 @@
   // "정지" pressed: judge the run only now — within the target is a success, past it a fail
   function finish(){
     stop();
-    showResult(base > TARGET_MS ? 'fail' : 'ok');
+    showResult(Math.floor(base / 10) * 10 < TARGET_MS ? 'ok' : 'fail');   // 목표 시간 '미만'이면 성공 (화면에 보이는 1/100초 기준)
   }
 
   function showResult(kind){

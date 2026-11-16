@@ -242,6 +242,23 @@
     }
 
     paintRecords();
+    applyTarget();
+  }
+
+  // 성공 기준(목표 시간)을 고른 학생에 맞추기: 평가 코스 페이지에서만 (남 7초 · 여 9초 같은 60점 기준)
+  // 서버가 알려 준 값을 이 기기에도 기억해 두어, 학생을 바꾸면 바로(오프라인이어도) 적용
+  function rememberTarget(token, recs){
+    const pr = recs && recs.practice;
+    const x = crew.find(c => c.token === token);
+    if (x && pr && typeof pr.target === 'number' && x.target !== pr.target) {
+      x.target = pr.target; x.targetCourse = pr.course || '';
+      saveDevice();
+    }
+  }
+  function applyTarget(){
+    if (!API || !student || typeof student.target !== 'number') return;
+    if (student.targetCourse && student.targetCourse !== COURSE) return;
+    document.dispatchEvent(new CustomEvent('run:target', { detail: { sec: student.target } }));
   }
 
   function paintRecords(){
@@ -323,6 +340,7 @@
       if (j && j.ok) {
         if (j.student) { Object.assign(x, j.student); saveDevice(); }
         recCache[x.token] = j.records;
+        rememberTarget(x.token, j.records);
         if (student && student.token === x.token) { records = j.records; paint(); }
       } else if (j && j.relogin) {
         drop(x.token, `${x.name} 학생의 비밀번호가 초기화되어 다시 로그인해야 해요.`);
@@ -339,6 +357,7 @@
     student = me;
     records = j.records || null;
     recCache[me.token] = records;
+    rememberTarget(me.token, records);
     pending = null; adding = false;
     saveDevice();
     form.reset(); setForm.reset(); resetMasks();
@@ -457,7 +476,7 @@
         const j = await call('save', rec);
         if (j && j.ok) {
           lastSaved = rec;
-          if (j.records) recCache[rec.token] = j.records;
+          if (j.records) { recCache[rec.token] = j.records; rememberTarget(rec.token, j.records); }
           if (student && rec.token === student.token && j.records) records = j.records;
         } else if (j && j.closed) {
           closed = j.error; recording = false;             // 선생님이 기록을 끝낸 뒤에 잰 기록

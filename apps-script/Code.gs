@@ -15,7 +15,8 @@
  *
  * 평가 (평가기준 탭에서 바꿈)
  *   한 기록 시간(기록 시작~종료) 안의 평가 코스 연습 횟수 → 연습 등급 (기본 5회 A, 4회 B, 3회 C, 그 이하 D)
- *   그 시간의 가장 빠른 기록 → 기록 등급 (남녀 따로 초 기준, 유효한 기록이 없으면 D)
+ *   그 시간의 가장 빠른 기록 → 기록 점수 (기본 남 7·9·11초 미만, 여 9·11·13초 미만이면 60·45·30점, 그 외 20점)
+ *   학생 화면의 성공 기준(목표 시간)은 가장 높은 점수의 기준 (남 7초 미만, 여 9초 미만)
  *
  * 시트 구성
  *   학생명단 : 교사가 입력. 첫 줄에 "이름", "담임" 열 ("학년", "반", "번호", "성별"은 있으면 사용)
@@ -23,7 +24,7 @@
  *   기록     : 측정할 때마다 한 줄씩 자동 추가
  *   최고기록 : 학생 × 코스별 최고 기록, 저장할 때마다 자동으로 다시 계산
  *   평가기준 : 평가 코스 · 무효 기록 · 등급 기준 (교사가 수정)
- *   평가     : 학생별 연습 횟수 · 연습 등급 · 최고 기록 · 기록 등급, 저장할 때마다 자동 계산
+ *   평가     : 학생별 연습 횟수 · 연습 등급 · 최고 기록 · 기록 점수, 저장할 때마다 자동 계산
  */
 
 const ROSTER_SHEET = '학생명단';
@@ -36,7 +37,7 @@ const COURSES = ['301번 버스', '지그재그', '이어달리기', '장애물'
 const RECORD_HEADERS = ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '랩(초)', '기록ID', '제외', '기록시간'];
 const AUTO_SHEETS = [RECORD_SHEET, BEST_SHEET, CRITERIA_SHEET, EVAL_SHEET];
 
-// 평가기준 탭의 처음 내용 (기록 초 기준은 예시: 학교 기준에 맞게 바꿔서 쓰기)
+// 평가기준 탭의 처음 내용 ("기록 ○○점" 줄은 점수와 초 기준을 바꾸거나 줄을 더해도 됨)
 const DEFAULT_CRITERIA = [
   ['항목', '남', '여', '설명'],
   ['평가 코스', '장애물', '', '이 코스 기록만 평가해요. 학생은 모든 코스를 선택할 수 있어요. 비우면 모든 코스를 평가'],
@@ -44,9 +45,10 @@ const DEFAULT_CRITERIA = [
   ['연습 A (회 이상)', 5, '', '한 기록 시간(기록 시작~종료) 안의 연습 횟수'],
   ['연습 B (회 이상)', 4, '', ''],
   ['연습 C (회 이상)', 3, '', '이보다 적으면 D'],
-  ['기록 A (초 이하)', 11, 12, '그 시간의 가장 빠른 기록 기준. 예시 값이에요. 학교 기준에 맞게 바꿔 주세요'],
-  ['기록 B (초 이하)', 12, 13, ''],
-  ['기록 C (초 이하)', 13, 14, '이보다 느리거나 유효한 기록이 없으면 D']
+  ['기록 60점 (초 미만)', 7, 9, '그 시간의 가장 빠른 기록이 이보다 빠르면 60점. 학생 화면의 성공 기준(목표 시간)도 이 값'],
+  ['기록 45점 (초 미만)', 9, 11, ''],
+  ['기록 30점 (초 미만)', 11, 13, ''],
+  ['기록 기본 점수', 20, '', '위 기준보다 느리거나 유효한 기록이 없을 때']
 ];
 
 const MSG_BAD     = '이름 또는 비밀번호가 맞지 않아요.';
@@ -349,7 +351,8 @@ function practice_(s, mine, cfg) {
   const runs = valid.filter(x => x.session === session);
   return {
     course: cfg.course, open: !!st.open, count: runs.length,
-    best: runs.length ? Math.min.apply(null, runs.map(x => x.sec)) : null, minSec: cfg.minSec
+    best: runs.length ? Math.min.apply(null, runs.map(x => x.sec)) : null, minSec: cfg.minSec,
+    target: targetFor_(s.sex, cfg)                  // 이 학생의 성공 기준(초 미만)
   };
 }
 
@@ -472,19 +475,40 @@ function criteria_() {
   const rows = criteriaSheet_().getDataRange().getValues();
   const find = label => rows.filter(r => normName_(r[0]).indexOf(normName_(label)) === 0)[0] || [];
   const num = (v, d) => (v === '' || v == null || isNaN(Number(v))) ? d : Number(v);
-  // 가장 빠른 기록 1개의 기준
-  const cut = (col, d) => ({
-    A: num(find('기록 A')[col], num(find('기록 A')[1], d[0])),
-    B: num(find('기록 B')[col], num(find('기록 B')[1], d[1])),
-    C: num(find('기록 C')[col], num(find('기록 C')[1], d[2]))
-  });
+  // 기록 점수: "기록 60점 (초 미만)" 같은 줄들. 가장 빠른 기록이 남/여 초 기준 미만이면 그 점수 (높은 점수부터)
+  const scores = rows.map(r => {
+    const m = normName_(r[0]).match(/^기록(\d+)점/);
+    const men = m && num(r[1], null);
+    return m && men !== null ? { points: Number(m[1]), cut: { '남': men, '여': num(r[2], men) } } : null;
+  }).filter(Boolean).sort((a, b) => b.points - a.points);
   const course = find('평가 코스');
   return {
     course: course.length ? String(course[1] || '').trim() : '장애물',
     minSec: num(find('무효 기록')[1], 5),
     practice: { A: num(find('연습 A')[1], 5), B: num(find('연습 B')[1], 4), C: num(find('연습 C')[1], 3) },
-    cut: { '남': cut(1, [11, 12, 13]), '여': cut(2, [12, 13, 14]) }
+    scores: scores.length ? scores : DEFAULT_SCORES,
+    basePoints: num(find('기록 기본 점수')[1], 20)
   };
+}
+
+const DEFAULT_SCORES = [
+  { points: 60, cut: { '남': 7, '여': 9 } },
+  { points: 45, cut: { '남': 9, '여': 11 } },
+  { points: 30, cut: { '남': 11, '여': 13 } }
+];
+
+// 가장 빠른 기록 → 기록 점수 (초 기준 "미만")
+function recordPoints_(best, sex, cfg) {
+  const base = cfg.basePoints == null ? 20 : cfg.basePoints;
+  if (best === null || best === undefined) return base;
+  const hit = (cfg.scores || DEFAULT_SCORES).filter(x => best < x.cut[sex === '여' ? '여' : '남'])[0];
+  return hit ? hit.points : base;
+}
+
+// 학생 화면의 성공 기준(목표 시간): 가장 높은 점수의 초 기준
+function targetFor_(sex, cfg) {
+  const top = (cfg.scores || DEFAULT_SCORES)[0];
+  return top ? top.cut[sex === '여' ? '여' : '남'] : null;
 }
 
 function round2_(n) { return Math.round(n * 100) / 100; }
@@ -504,13 +528,12 @@ function evaluate_(r, rows, cfg) {
     const runs = pick === null ? [] : sess[pick];
     const count = runs.length;
     const best = count ? Math.min.apply(null, runs.map(x => x.sec)) : null;   // 그 시간의 가장 빠른 기록
-    const cut = cfg.cut[st.sex === '여' ? '여' : '남'];
     return {
       grade: st.grade, cls: st.cls, num: st.num, sex: st.sex, name: st.name, key: st.key,
       session: pick === null ? 0 : +pick, count: count,
       practice: count >= cfg.practice.A ? 'A' : count >= cfg.practice.B ? 'B' : count >= cfg.practice.C ? 'C' : 'D',
       best: best,
-      record: best === null ? 'D' : best <= cut.A ? 'A' : best <= cut.B ? 'B' : best <= cut.C ? 'C' : 'D'
+      record: recordPoints_(best, st.sex, cfg)
     };
   });
 }
@@ -519,7 +542,7 @@ function rebuildEval_() {
   const ss = SpreadsheetApp.getActive();
   const cfg = criteria_();
   const list = evaluate_(roster_(), recordRows_(), cfg);
-  const header = ['학년', '반', '번호', '성별', '이름', '평가 시간', '연습 횟수', '연습 등급', '최고 기록(초)', '기록 등급'];
+  const header = ['학년', '반', '번호', '성별', '이름', '평가 시간', '연습 횟수', '연습 등급', '최고 기록(초)', '기록 점수'];
   const out = [header].concat(list.map(e => [e.grade, e.cls, e.num, e.sex, e.name, e.session ? new Date(e.session) : '',
     e.count, e.practice, e.best == null ? '' : e.best, e.record]));
   const sh = ss.getSheetByName(EVAL_SHEET) || ss.insertSheet(EVAL_SHEET);
@@ -593,7 +616,7 @@ function board_() {
   const d = bestData_(r, all.filter(x => !x.excluded));
   const cfg = criteria_();
   return {
-    evaluation: { course: cfg.course, minSec: cfg.minSec, practice: cfg.practice, cut: cfg.cut,
+    evaluation: { course: cfg.course, minSec: cfg.minSec, practice: cfg.practice, scores: cfg.scores, basePoints: cfg.basePoints,
                   list: evaluate_(r, all, cfg).map(e => Object.assign(e, {
                     session: e.session ? Utilities.formatDate(new Date(e.session), tz, 'M/d HH:mm') : '' })) },
     ok: true, mode: 'sheet', classSelection: true, recording: !!st.open, since: st.open ? st.start : null, classKey: st.open ? st.classKey || '' : '',

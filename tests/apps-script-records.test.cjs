@@ -71,27 +71,40 @@ test('the configured minimum applies to every course and can be changed', () => 
   assert.equal(summary.practice.count, 4);
 });
 
-test('record grade uses the single fastest valid run of that hour', () => {
-  const ctx = app([{ sec: 4.2 }, { sec: 12.4 }, { sec: 11.6 }, { sec: 10.9, excluded: true }, { sec: 9, course: '지그재그' }, { sec: 13.1 }]);
-  const cfg = { course: '장애물', minSec: 5, practice: { A: 5, B: 4, C: 3 },
-                cut: { '남': { A: 11, B: 12, C: 13 }, '여': { A: 12, B: 13, C: 14 } } };
+const scoring = { course: '장애물', minSec: 5, practice: { A: 5, B: 4, C: 3 }, basePoints: 20,
+  scores: [{ points: 60, cut: { '남': 7, '여': 9 } }, { points: 45, cut: { '남': 9, '여': 11 } }, { points: 30, cut: { '남': 11, '여': 13 } }] };
+
+test('record points use the single fastest valid run of that hour, by sex', () => {
+  const ctx = app([{ sec: 4.2 }, { sec: 10.4 }, { sec: 8.6 }, { sec: 6.1, excluded: true }, { sec: 6, course: '지그재그' }, { sec: 12.1 }]);
   const roster = { list: [{ ...student, sex: '남' }, { ...student, sex: '여' }] };
-  const [boy, girl] = ctx.evaluate_(roster, ctx.recordRows_(), cfg);
-  assert.equal(boy.count, 3);            // 4.2 is invalid, 10.9 excluded, 지그재그 is another course
+  const [boy, girl] = ctx.evaluate_(roster, ctx.recordRows_(), scoring);
+  assert.equal(boy.count, 3);            // 4.2 is invalid, 6.1 excluded, 지그재그 is another course
   assert.equal(boy.practice, 'C');
-  assert.equal(boy.best, 11.6);          // fastest valid run, not a sum
-  assert.equal(boy.record, 'B');         // 남: 11.6 <= 12
-  assert.equal(girl.record, 'A');        // 여: 11.6 <= 12
-  assert.equal(ctx.summary_(student).practice.best, 11.6);
+  assert.equal(boy.best, 8.6);           // fastest valid run, not a sum
+  assert.equal(boy.record, 45);          // 남: 8.6 < 9
+  assert.equal(girl.record, 60);         // 여: 8.6 < 9
 });
 
-test('a student with no valid run gets D and no best record', () => {
+test('cutoffs are strict: exactly the cutoff falls to the next score', () => {
+  const ctx = app([{ sec: 7 }]);
+  const [e] = ctx.evaluate_({ list: [{ ...student, sex: '남' }] }, ctx.recordRows_(), scoring);
+  assert.equal(e.record, 45);
+  assert.equal(ctx.recordPoints_(6.99, '남', scoring), 60);
+  assert.equal(ctx.recordPoints_(13, '여', scoring), 20);
+});
+
+test('a student with no valid run gets the base points and no best record', () => {
   const ctx = app([{ sec: 3 }]);
-  const cfg = { course: '장애물', minSec: 5, practice: { A: 5, B: 4, C: 3 },
-                cut: { '남': { A: 11, B: 12, C: 13 }, '여': { A: 12, B: 13, C: 14 } } };
-  const [e] = ctx.evaluate_({ list: [{ ...student, sex: '남' }] }, ctx.recordRows_(), cfg);
+  const [e] = ctx.evaluate_({ list: [{ ...student, sex: '남' }] }, ctx.recordRows_(), scoring);
   assert.equal(e.best, null);
-  assert.equal(e.record, 'D');
+  assert.equal(e.record, 20);
   assert.equal(e.practice, 'D');
-  assert.equal(ctx.summary_(student).practice.best, null);
+});
+
+test('the student screen gets the fastest run and the top-score target for their sex', () => {
+  const ctx = app([{ sec: 8.4 }, { sec: 9.2 }]);
+  ctx.criteria_ = () => scoring;
+  assert.equal(ctx.summary_({ ...student, sex: '남' }).practice.best, 8.4);
+  assert.equal(ctx.summary_({ ...student, sex: '남' }).practice.target, 7);
+  assert.equal(ctx.summary_({ ...student, sex: '여' }).practice.target, 9);
 });

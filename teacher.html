@@ -112,6 +112,7 @@
   .dist{display:flex; gap:14px; flex-wrap:wrap; margin:0 0 12px; font-size:13px; font-weight:700; color:var(--ink-soft)}
   .dist span b{font-family:var(--mono); color:var(--ink)}
   .g{display:inline-grid; place-items:center; width:28px; height:28px; border-radius:9px; font-weight:800; font-size:14px}
+  .g.pts{width:36px}
   .g.A{background:var(--ok-bg); color:var(--ok)}
   .g.B{background:rgba(31,111,235,.12); color:var(--accent)}
   .g.C{background:var(--warn-bg); color:var(--warn)}
@@ -434,18 +435,20 @@
     sel.dataset.opts = want;
   }
 
-  // 평가: 한 기록 시간 안의 연습 횟수 → 연습 등급, 가장 빠른 기록 → 기록 등급 (기준은 구글 시트 '평가기준' 탭)
+  // 평가: 한 기록 시간 안의 연습 횟수 → 연습 등급, 가장 빠른 기록 → 기록 점수 (기준은 구글 시트 '평가기준' 탭)
   function paintEval(){
     const ev = data.evaluation;
     $('evalCard').hidden = !ev;
     if (!ev) return;
     $('evalTitle').textContent = `평가 · ${ev.course || '모든 코스'}`;
-    const c = ev.cut, pr = ev.practice;
+    const pr = ev.practice, scores = ev.scores || [], base = ev.basePoints;
+    const rule = sex => scores.map((x, i) => `${i ? '' : '<b>'}${x.points}점 &lt; ${x.cut[sex]}초${i ? '' : '</b>'}`).join(' · ') + ` · 그 외 ${base}점`;
     $('evalRule').innerHTML =
       `연습 등급: <b>${pr.A}회 이상 A</b> · ${pr.B}회 B · ${pr.C}회 C · 그보다 적으면 D &nbsp;|&nbsp; ` +
-      `기록 등급(가장 빠른 기록): 남 <b>A ≤ ${c['남'].A}</b> · B ≤ ${c['남'].B} · C ≤ ${c['남'].C}초, ` +
-      `여 <b>A ≤ ${c['여'].A}</b> · B ≤ ${c['여'].B} · C ≤ ${c['여'].C}초 &nbsp;|&nbsp; ${ev.minSec}초 미만 기록은 무효. ` +
+      `기록 점수(가장 빠른 기록): 남 ${rule('남')} / 여 ${rule('여')} &nbsp;|&nbsp; ${ev.minSec}초 미만 기록은 무효. ` +
       `기준은 구글 시트 <b>평가기준</b> 탭에서 바꿔요.`;
+    // 점수 칸 색: 가장 높은 점수부터 A·B·C 색, 기본 점수는 D 색
+    const tone = pts => { const i = scores.findIndex(x => x.points === pts); return i < 0 ? 'D' : 'ABC'[Math.min(i, 2)]; };
     const sel = $('ecls');
     fillClasses(sel, ev.list);
     let list = ev.list.filter(e => !sel.value || classOf(e) === sel.value);
@@ -455,13 +458,13 @@
     const n = (k, g) => list.filter(e => e[k] === g).length;
     $('evalDist').innerHTML = list.length
       ? `<span>연습 등급 ${['A','B','C','D'].map(g => `${g} <b>${n('practice', g)}</b>`).join(' · ')}</span>` +
-        `<span>기록 등급 ${['A','B','C','D'].map(g => `${g} <b>${n('record', g)}</b>`).join(' · ')}</span>`
+        `<span>기록 점수 ${[...scores.map(x => x.points), base].map(g => `${g}점 <b>${n('record', g)}</b>`).join(' · ')}</span>`
       : '';
     $('eval').innerHTML = list.length
-      ? `<thead><tr><th>반</th><th>번호</th><th>이름</th><th>성별</th><th>평가 시간</th><th class="n">연습</th><th>연습 등급</th><th class="n">최고 기록</th><th>기록 등급</th></tr></thead><tbody>` +
+      ? `<thead><tr><th>반</th><th>번호</th><th>이름</th><th>성별</th><th>평가 시간</th><th class="n">연습</th><th>연습 등급</th><th class="n">최고 기록</th><th>기록 점수</th></tr></thead><tbody>` +
         list.map(e => `<tr><td class="dim">${esc(classOf(e))}</td><td class="dim">${esc(e.num)}</td><td><b>${esc(e.name)}</b></td><td class="dim">${esc(e.sex)}</td>` +
           `<td class="dim">${esc(e.session || '—')}</td><td class="n">${e.count}회</td><td><span class="g ${e.practice}">${e.practice}</span></td>` +
-          `<td class="n"><b>${e.best != null ? sec(e.best) : '<span class="dim">—</span>'}</b></td><td><span class="g ${e.record}">${e.record}</span></td></tr>`).join('') + '</tbody>'
+          `<td class="n"><b>${e.best != null ? sec(e.best) : '<span class="dim">—</span>'}</b></td><td><span class="g pts ${tone(e.record)}">${e.record}</span></td></tr>`).join('') + '</tbody>'
       : '<tbody><tr><td class="empty">학생이 없어요.</td></tr></tbody>';
   }
   $('ecls').addEventListener('change', paintEval);

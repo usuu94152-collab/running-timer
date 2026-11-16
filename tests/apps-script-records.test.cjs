@@ -20,7 +20,7 @@ function app(runs, minSec = 5) {
     Utilities: { formatDate: () => '11/10 10:00' }
   });
   vm.runInContext(source, context);
-  context.criteria_ = () => ({ course: '장애물', minSec, topN: 3 });
+  context.criteria_ = () => ({ course: '장애물', minSec });
   context.state_ = () => ({ open: true, start: session.getTime() });
   context.tz_ = () => 'Asia/Seoul';
   return context;
@@ -64,9 +64,34 @@ test('the configured minimum applies to every course and can be changed', () => 
   assert.equal(summary.best['장애물'].sec, 7);
   assert.equal(summary.best['지그재그'].sec, 8);
   assert.equal(summary.practice.count, 1);
-  ctx.criteria_ = () => ({ course: '', minSec: 0, topN: 3 });
+  ctx.criteria_ = () => ({ course: '', minSec: 0 });
   summary = ctx.summary_(student);
   assert.equal(summary.best['장애물'].sec, 5);
   assert.equal(summary.best['지그재그'].sec, 6.9);
   assert.equal(summary.practice.count, 4);
+});
+
+test('record grade uses the single fastest valid run of that hour', () => {
+  const ctx = app([{ sec: 4.2 }, { sec: 12.4 }, { sec: 11.6 }, { sec: 10.9, excluded: true }, { sec: 9, course: '지그재그' }, { sec: 13.1 }]);
+  const cfg = { course: '장애물', minSec: 5, practice: { A: 5, B: 4, C: 3 },
+                cut: { '남': { A: 11, B: 12, C: 13 }, '여': { A: 12, B: 13, C: 14 } } };
+  const roster = { list: [{ ...student, sex: '남' }, { ...student, sex: '여' }] };
+  const [boy, girl] = ctx.evaluate_(roster, ctx.recordRows_(), cfg);
+  assert.equal(boy.count, 3);            // 4.2 is invalid, 10.9 excluded, 지그재그 is another course
+  assert.equal(boy.practice, 'C');
+  assert.equal(boy.best, 11.6);          // fastest valid run, not a sum
+  assert.equal(boy.record, 'B');         // 남: 11.6 <= 12
+  assert.equal(girl.record, 'A');        // 여: 11.6 <= 12
+  assert.equal(ctx.summary_(student).practice.best, 11.6);
+});
+
+test('a student with no valid run gets D and no best record', () => {
+  const ctx = app([{ sec: 3 }]);
+  const cfg = { course: '장애물', minSec: 5, practice: { A: 5, B: 4, C: 3 },
+                cut: { '남': { A: 11, B: 12, C: 13 }, '여': { A: 12, B: 13, C: 14 } } };
+  const [e] = ctx.evaluate_({ list: [{ ...student, sex: '남' }] }, ctx.recordRows_(), cfg);
+  assert.equal(e.best, null);
+  assert.equal(e.record, 'D');
+  assert.equal(e.practice, 'D');
+  assert.equal(ctx.summary_(student).practice.best, null);
 });

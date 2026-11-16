@@ -15,7 +15,7 @@
  *
  * 평가 (평가기준 탭에서 바꿈)
  *   한 기록 시간(기록 시작~종료) 안의 평가 코스 연습 횟수 → 연습 등급 (기본 5회 A, 4회 B, 3회 C, 그 이하 D)
- *   그 시간의 우수기록 3개 합산 → 기록 등급 (남녀 따로 초 기준, 우수기록이 모자라면 D)
+ *   그 시간의 가장 빠른 기록 → 기록 등급 (남녀 따로 초 기준, 유효한 기록이 없으면 D)
  *
  * 시트 구성
  *   학생명단 : 교사가 입력. 첫 줄에 "이름", "담임" 열 ("학년", "반", "번호", "성별"은 있으면 사용)
@@ -23,7 +23,7 @@
  *   기록     : 측정할 때마다 한 줄씩 자동 추가
  *   최고기록 : 학생 × 코스별 최고 기록, 저장할 때마다 자동으로 다시 계산
  *   평가기준 : 평가 코스 · 무효 기록 · 등급 기준 (교사가 수정)
- *   평가     : 학생별 연습 횟수 · 연습 등급 · 우수기록 · 합산 · 기록 등급, 저장할 때마다 자동 계산
+ *   평가     : 학생별 연습 횟수 · 연습 등급 · 최고 기록 · 기록 등급, 저장할 때마다 자동 계산
  */
 
 const ROSTER_SHEET = '학생명단';
@@ -36,18 +36,17 @@ const COURSES = ['301번 버스', '지그재그', '이어달리기', '장애물'
 const RECORD_HEADERS = ['측정일시', '학년', '반', '번호', '이름', '코스', '기록(초)', '목표(초)', '결과', '랩(초)', '기록ID', '제외', '기록시간'];
 const AUTO_SHEETS = [RECORD_SHEET, BEST_SHEET, CRITERIA_SHEET, EVAL_SHEET];
 
-// 평가기준 탭의 처음 내용 (합산 초 기준은 예시: 학교 기준에 맞게 바꿔서 쓰기)
+// 평가기준 탭의 처음 내용 (기록 초 기준은 예시: 학교 기준에 맞게 바꿔서 쓰기)
 const DEFAULT_CRITERIA = [
   ['항목', '남', '여', '설명'],
   ['평가 코스', '장애물', '', '이 코스 기록만 평가해요. 학생은 모든 코스를 선택할 수 있어요. 비우면 모든 코스를 평가'],
-  ['무효 기록(초 미만)', 5, '', '이보다 짧은 기록(실수로 바로 정지)은 연습 횟수와 우수기록에서 빼요'],
-  ['우수기록 개수', 3, '', '빠른 기록 몇 개를 합산할지'],
+  ['무효 기록(초 미만)', 5, '', '이보다 짧은 기록(실수로 바로 정지)은 연습 횟수와 최고 기록에서 빼요'],
   ['연습 A (회 이상)', 5, '', '한 기록 시간(기록 시작~종료) 안의 연습 횟수'],
   ['연습 B (회 이상)', 4, '', ''],
   ['연습 C (회 이상)', 3, '', '이보다 적으면 D'],
-  ['합산 A (초 이하)', 33, 36, '예시 값이에요. 학교 기준에 맞게 바꿔 주세요'],
-  ['합산 B (초 이하)', 36, 39, ''],
-  ['합산 C (초 이하)', 39, 42, '이보다 느리거나 우수기록이 모자라면 D']
+  ['기록 A (초 이하)', 11, 12, '그 시간의 가장 빠른 기록 기준. 예시 값이에요. 학교 기준에 맞게 바꿔 주세요'],
+  ['기록 B (초 이하)', 12, 13, ''],
+  ['기록 C (초 이하)', 13, 14, '이보다 느리거나 유효한 기록이 없으면 D']
 ];
 
 const MSG_BAD     = '이름 또는 비밀번호가 맞지 않아요.';
@@ -336,7 +335,7 @@ function summary_(s) {
   return { count: mine.length, best: best, recent: recent, practice: practice_(s, mine, cfg) };
 }
 
-// 학생 화면용: 지금(또는 마지막) 기록 시간의 평가 코스 연습 횟수와 우수기록 합산 (등급은 보여 주지 않음)
+// 학생 화면용: 지금(또는 마지막) 기록 시간의 평가 코스 연습 횟수와 가장 빠른 기록 (등급은 보여 주지 않음)
 function practice_(s, mine, cfg) {
   cfg = cfg || criteria_();
   const st = state_();
@@ -348,10 +347,9 @@ function practice_(s, mine, cfg) {
     Object.keys(n).forEach(k => { if (!session || n[k] > n[session] || (n[k] === n[session] && +k > session)) session = +k; });
   }
   const runs = valid.filter(x => x.session === session);
-  const top = runs.map(x => x.sec).sort((a, b) => a - b).slice(0, cfg.topN);
   return {
-    course: cfg.course, open: !!st.open, count: runs.length, topN: cfg.topN, best: top,
-    sum: top.length >= cfg.topN ? round2_(top.reduce((a, b) => a + b, 0)) : null, minSec: cfg.minSec
+    course: cfg.course, open: !!st.open, count: runs.length,
+    best: runs.length ? Math.min.apply(null, runs.map(x => x.sec)) : null, minSec: cfg.minSec
   };
 }
 
@@ -474,18 +472,18 @@ function criteria_() {
   const rows = criteriaSheet_().getDataRange().getValues();
   const find = label => rows.filter(r => normName_(r[0]).indexOf(normName_(label)) === 0)[0] || [];
   const num = (v, d) => (v === '' || v == null || isNaN(Number(v))) ? d : Number(v);
-  const cut = col => ({
-    A: num(find('합산 A')[col], num(find('합산 A')[1], 33)),
-    B: num(find('합산 B')[col], num(find('합산 B')[1], 36)),
-    C: num(find('합산 C')[col], num(find('합산 C')[1], 39))
+  // 가장 빠른 기록 1개의 기준 (예전 "합산" 줄은 3개 합계 기준이라 쓰지 않음)
+  const cut = (col, d) => ({
+    A: num(find('기록 A')[col], num(find('기록 A')[1], d[0])),
+    B: num(find('기록 B')[col], num(find('기록 B')[1], d[1])),
+    C: num(find('기록 C')[col], num(find('기록 C')[1], d[2]))
   });
   const course = find('평가 코스');
   return {
     course: course.length ? String(course[1] || '').trim() : '장애물',
     minSec: num(find('무효 기록')[1], 5),
-    topN: Math.max(1, Math.round(num(find('우수기록 개수')[1], 3))),
     practice: { A: num(find('연습 A')[1], 5), B: num(find('연습 B')[1], 4), C: num(find('연습 C')[1], 3) },
-    cut: { '남': cut(1), '여': cut(2) }
+    cut: { '남': cut(1, [11, 12, 13]), '여': cut(2, [12, 13, 14]) }
   };
 }
 
@@ -505,15 +503,14 @@ function evaluate_(r, rows, cfg) {
     });
     const runs = pick === null ? [] : sess[pick];
     const count = runs.length;
-    const best = runs.map(x => x.sec).sort((a, b) => a - b).slice(0, cfg.topN);
-    const sum = best.length >= cfg.topN ? round2_(best.reduce((a, b) => a + b, 0)) : null;
+    const best = count ? Math.min.apply(null, runs.map(x => x.sec)) : null;   // 그 시간의 가장 빠른 기록
     const cut = cfg.cut[st.sex === '여' ? '여' : '남'];
     return {
       grade: st.grade, cls: st.cls, num: st.num, sex: st.sex, name: st.name, key: st.key,
       session: pick === null ? 0 : +pick, count: count,
       practice: count >= cfg.practice.A ? 'A' : count >= cfg.practice.B ? 'B' : count >= cfg.practice.C ? 'C' : 'D',
-      best: best, sum: sum,
-      record: sum === null ? 'D' : sum <= cut.A ? 'A' : sum <= cut.B ? 'B' : sum <= cut.C ? 'C' : 'D'
+      best: best,
+      record: best === null ? 'D' : best <= cut.A ? 'A' : best <= cut.B ? 'B' : best <= cut.C ? 'C' : 'D'
     };
   });
 }
@@ -522,10 +519,9 @@ function rebuildEval_() {
   const ss = SpreadsheetApp.getActive();
   const cfg = criteria_();
   const list = evaluate_(roster_(), recordRows_(), cfg);
-  const tops = []; for (let i = 1; i <= cfg.topN; i++) tops.push('우수' + i + '(초)');
-  const header = ['학년', '반', '번호', '성별', '이름', '평가 시간', '연습 횟수', '연습 등급'].concat(tops, ['합산(초)', '기록 등급']);
+  const header = ['학년', '반', '번호', '성별', '이름', '평가 시간', '연습 횟수', '연습 등급', '최고 기록(초)', '기록 등급'];
   const out = [header].concat(list.map(e => [e.grade, e.cls, e.num, e.sex, e.name, e.session ? new Date(e.session) : '',
-    e.count, e.practice].concat(tops.map((_, i) => e.best[i] != null ? e.best[i] : ''), [e.sum == null ? '' : e.sum, e.record])));
+    e.count, e.practice, e.best == null ? '' : e.best, e.record]));
   const sh = ss.getSheetByName(EVAL_SHEET) || ss.insertSheet(EVAL_SHEET);
   sh.clear();
   sh.getRange(1, 1, out.length, header.length).setValues(out);
@@ -533,7 +529,7 @@ function rebuildEval_() {
   sh.setFrozenRows(1);
   if (out.length > 1) {
     sh.getRange(2, 6, out.length - 1, 1).setNumberFormat('m/d hh:mm');
-    sh.getRange(2, 9, out.length - 1, cfg.topN + 1).setNumberFormat('0.00');
+    sh.getRange(2, 9, out.length - 1, 1).setNumberFormat('0.00');
   }
 }
 
@@ -597,7 +593,7 @@ function board_() {
   const d = bestData_(r, all.filter(x => !x.excluded));
   const cfg = criteria_();
   return {
-    evaluation: { course: cfg.course, minSec: cfg.minSec, topN: cfg.topN, practice: cfg.practice, cut: cfg.cut,
+    evaluation: { course: cfg.course, minSec: cfg.minSec, practice: cfg.practice, cut: cfg.cut,
                   list: evaluate_(r, all, cfg).map(e => Object.assign(e, {
                     session: e.session ? Utilities.formatDate(new Date(e.session), tz, 'M/d HH:mm') : '' })) },
     ok: true, mode: 'sheet', classSelection: true, recording: !!st.open, since: st.open ? st.start : null, classKey: st.open ? st.classKey || '' : '',

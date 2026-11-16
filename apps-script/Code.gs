@@ -472,7 +472,7 @@ function criteria_() {
   const rows = criteriaSheet_().getDataRange().getValues();
   const find = label => rows.filter(r => normName_(r[0]).indexOf(normName_(label)) === 0)[0] || [];
   const num = (v, d) => (v === '' || v == null || isNaN(Number(v))) ? d : Number(v);
-  // 가장 빠른 기록 1개의 기준 (예전 "합산" 줄은 3개 합계 기준이라 쓰지 않음)
+  // 가장 빠른 기록 1개의 기준
   const cut = (col, d) => ({
     A: num(find('기록 A')[col], num(find('기록 A')[1], d[0])),
     B: num(find('기록 B')[col], num(find('기록 B')[1], d[1])),

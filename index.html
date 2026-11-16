@@ -335,6 +335,22 @@
   body.is-revealed .replay{opacity:1; transform:none; pointer-events:auto; transition-delay:.9s}
   .replay svg{width:14px; height:14px}
 
+  /* skip the intro clip: shown only while it plays, where the replay button will appear */
+  .skip{
+    position:fixed; z-index:5;   /* fixed: on phones the hero is taller than the screen */ right:clamp(18px,4vw,54px); bottom:clamp(18px,4vw,44px);
+    display:inline-flex; align-items:center; gap:8px;
+    padding:12px 18px; border-radius:999px; cursor:pointer;
+    background:rgba(6,14,28,.55); border:1px solid rgba(255,255,255,.35);
+    color:#fff; font-family:inherit; font-size:14px; font-weight:800;
+    box-shadow:0 10px 26px -12px rgba(0,0,0,.6);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    opacity:0; transform:translateY(10px); pointer-events:none;
+    transition:opacity .5s ease, transform .5s ease, background .2s ease;
+  }
+  .skip:hover{background:rgba(6,14,28,.72)}
+  .hero.is-playing .skip{opacity:1; transform:none; pointer-events:auto; transition-delay:.6s}
+  .skip svg{width:15px; height:15px}
+
   /* ---------- NEXT SECTION ---------- */
   .stats{
     position:relative; z-index:2;
@@ -476,6 +492,10 @@
     </div>
   </div>
 
+  <button class="skip" id="skip" type="button" aria-label="영상 건너뛰고 바로 시작">
+    영상 건너뛰기
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5l8 7-8 7zM12 5l8 7-8 7z"/></svg>
+  </button>
   <button class="replay" id="replay" type="button" aria-label="히어로 영상 다시 재생">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
     영상 다시 보기
@@ -564,6 +584,8 @@
 
   clip.muted = true;            // autoplay-safe
   replay.addEventListener('click', startClip);
+  // "영상 건너뛰기": stop the intro and go straight to the timer
+  document.getElementById('skip').addEventListener('click', () => { clip.pause(); reveal(); });
 
   /* ================= STOPWATCH ================= */
   const TARGET_MS = (parseFloat(document.querySelector('[data-t]').textContent) || 30) * 1000;

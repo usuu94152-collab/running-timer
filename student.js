@@ -6,7 +6,7 @@
  *   (로그인은 이 기기에 남아 다음 수업에도 그대로. [편집]으로 학생을 뺄 수 있음)
  * - 선생님이 [기록 시작]을 누른 동안만 저장 (선생님 페이지 teacher.html)
  * - 이 시트 연동 사이트는 장애물 코스만 표시 (다른 코스는 독립형 클론 사이트에서 사용)
- * - 스톱워치 위에 이번 기록 시간의 연습 횟수와 우수기록 합산 표시 (등급은 보여 주지 않음)
+ * - 스톱워치 위에 이번 기록 시간의 연습 횟수와 가장 빠른 기록 표시 (등급은 보여 주지 않음)
  * - 정지를 누르면(코스 페이지가 보내는 'run:finish' 이벤트) 기록을 저장
  * - 인터넷이 끊겨도 기록은 이 브라우저에 보관했다가 연결되면 다시 보냄
  * - 페이지 아래 "나의 기록"에 코스별 최고 기록과 최근 기록 표시
@@ -222,15 +222,14 @@
     crewChips.innerHTML = crew.map((x, i) =>
       `<button type="button" class="chip${student && x.token === student.token ? ' is-on' : ''}" data-pick="${i}" aria-pressed="${student && x.token === student.token}">` +
       `${esc(x.name)}${dup(x.name) ? `<small>${esc(short(x.label))}</small>` : ''}${editing ? '<i aria-label="빼기">×</i>' : ''}</button>`).join('');
-    // 이번 기록 시간의 연습 횟수 · 우수기록 합산
+    // 이번 기록 시간의 연습 횟수 · 가장 빠른 기록
     const pr = records && records.practice;
     const showToday = !!(student && pr && pr.open && recording !== false && !otherClass() && (!pr.course || pr.course === COURSE));
     crewToday.hidden = !showToday;
     if (showToday) {
-      const left = pr.topN - pr.count;
-      crewToday.innerHTML = `이번 시간 연습 <b>${pr.count}회</b>` + (pr.sum != null
-        ? ` · 우수 ${pr.topN}개 합산 <b>${secText(pr.sum)}초</b>`
-        : ` · ${left}회 더 뛰면 우수 ${pr.topN}개 합산이 나와요`);
+      crewToday.innerHTML = `이번 시간 연습 <b>${pr.count}회</b>` + (typeof pr.best === 'number'
+        ? ` · 최고 기록 <b>${secText(pr.best)}초</b>`
+        : ' · 뛰면 최고 기록이 나와요');
     }
     recBadge.className = 'crew__rec' + (recording ? ' is-on' : recording === false ? ' is-off' : '');
     recBadge.textContent = recording ? (recordingClass ? classText() + ' 기록 중' + (otherClass() ? ' · 나는 연습만 가능' : '') : '기록 중') : recording === false ? '기록 대기 · 선생님이 시작하면 저장돼요' : `이 기기 학생 ${crew.length}명`;
